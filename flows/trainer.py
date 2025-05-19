@@ -7,12 +7,12 @@ from einops import repeat, rearrange, reduce
 class FlowTrainer(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3):
         super().__init__()
-        self.factorizedflow = flow_model
+        self.flow_model = flow_model
         self.learning_rate = learning_rate
         self.save_hyperparameters()
 
     def forward(self, x, t):
-        return self.factorizedflow(x, t)
+        return self.flow_model(x, t)
 
     def training_step(self, batch, batch_idx):
         base, target = batch
@@ -20,7 +20,7 @@ class FlowTrainer(LightningModule):
         tr = repeat(t, 'b 1 -> b l k', l=base.shape[1], k=base.shape[2])
         xt = base * (1 - tr) + target * tr
         v = target - base
-        vt = self.factorizedflow(xt, t)
+        vt = self.flow_model(xt, t)
         loss = nn.MSELoss()(v,vt)  # Example loss: minimize velocity magnitude
         self.log("train_loss", loss, on_step = False, on_epoch = True)
         return loss
@@ -31,13 +31,13 @@ class FlowTrainer(LightningModule):
         tr = repeat(t, 'b 1 -> b l k', l=base.shape[1], k=base.shape[2])
         xt = base * (1 - tr) + target * tr
         v = target - base
-        vt = self.factorizedflow(xt, t)
+        vt = self.flow_model(xt, t)
         loss = nn.MSELoss()(v,vt)  # Example loss: minimize velocity magnitude
         self.log("val_loss", loss, on_step = False, on_epoch = True)
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.factorizedflow.parameters(), lr=self.learning_rate)
+        return torch.optim.Adam(self.flow_model.parameters(), lr=self.learning_rate)
 
 class DistillationTrainer(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3):

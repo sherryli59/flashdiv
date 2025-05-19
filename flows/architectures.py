@@ -77,6 +77,22 @@ class FlowNet(nn.Module):
             all_ts.append((i+1) * dt)
         return torch.tensor(all_ts), torch.stack(all_xs), rearrange(all_traces, 't b  -> t b ')
 
+    @torch.no_grad()
+    def sample_logprob(self, xs, n_steps: int=100, **kwargs):
+        """
+        ODE integration returning the last position and associated logprob
+        """
+        dt = 1. / n_steps
+        xs = xs.detach().clone()
+        curr_trace = torch.zeros((xs.shape[0])).to(xs)
+        batch_size = xs.shape[0]
+        for i in range(n_steps):
+            t = torch.ones((batch_size,1)).to(xs) * i * dt
+            curr_trace += self.divergence(xs, t, **kwargs) * dt
+            vt = self.forward(xs, t)
+            xs += dt * vt
+        return xs, curr_trace
+
 
 ##### Base velocityNet
 
