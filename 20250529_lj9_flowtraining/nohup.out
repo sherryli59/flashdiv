@@ -1,0 +1,240 @@
+cuda
+Traceback (most recent call last):
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 82, in <module>
+    velocitynet = VelocityFlowLJ(dim=int(nbparticles * dim), hidden_dim=int(6 * dim * nbparticles), num_layers=6)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 24, in __init__
+    super().__init__(dim)
+TypeError: FlowNet.__init__() takes 1 positional argument but 2 were given
+cuda
+Traceback (most recent call last):
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 82, in <module>
+    velocitynet = VelocityFlowLJ(dim=int(nbparticles * dim), hidden_dim=int(6 * dim * nbparticles), num_layers=6)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 25, in __init__
+    self.encoder = nn.Linear(self.dim+1, hidden_dim)
+                             ^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1688, in __getattr__
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+AttributeError: 'VelocityFlowLJ' object has no attribute 'dim'
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:44: attribute 'flow_model' removed from hparams because it cannot be pickled
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+Missing logger folder: flow_model_lj9_2d_1.0_nb_data_10000000_batch_size_256_epochs_500_lr_0.0001/lightning_logs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type           | Params
+----------------------------------------------
+0 | flow_model | VelocityFlowLJ | 145 K 
+----------------------------------------------
+145 K     Trainable params
+0         Non-trainable params
+145 K     Total params
+0.582     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+[rank: 0] Received SIGTERM: 15
+cuda
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:44: attribute 'flow_model' removed from hparams because it cannot be pickled
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+Missing logger folder: flow_model_lj9_2d_1.0_nb_data_100000_batch_size_256_epochs_500_lr_0.0001/lightning_logs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type           | Params
+----------------------------------------------
+0 | flow_model | VelocityFlowLJ | 145 K 
+----------------------------------------------
+145 K     Trainable params
+0         Non-trainable params
+145 K     Total params
+0.582     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+`Trainer.fit` stopped: `max_epochs=500` reached.
+cuda
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+Missing logger folder: flow_model_lj9_2d_1.0_nb_data_100000_batch_size_256_epochs_1000_lr_0.0001/lightning_logs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type          | Params
+---------------------------------------------
+0 | flow_model | EGNN_dynamics | 205 K 
+---------------------------------------------
+205 K     Trainable params
+0         Non-trainable params
+205 K     Total params
+0.820     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+cuda
+Traceback (most recent call last):
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 83, in <module>
+    trainer.fit(velocitytrainer, train_loader, val_loader)
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/trainer.py", line 544, in fit
+    call._call_and_handle_interrupt(
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/call.py", line 44, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/trainer.py", line 580, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/trainer.py", line 987, in _run
+    results = self._run_stage()
+              ^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/trainer.py", line 1031, in _run_stage
+    self._run_sanity_check()
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/trainer.py", line 1060, in _run_sanity_check
+    val_loop.run()
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/loops/utilities.py", line 182, in _decorator
+    return loop_run(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/loops/evaluation_loop.py", line 135, in run
+    self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/loops/evaluation_loop.py", line 396, in _evaluation_step
+    output = call._call_strategy_hook(trainer, hook_name, *step_args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/call.py", line 309, in _call_strategy_hook
+    output = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/strategies/strategy.py", line 412, in validation_step
+    return self.lightning_module.validation_step(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/../core/flows/trainer.py", line 34, in validation_step
+    vt = self.flow_model(xt, t)
+         ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/../core/flows/egnn.py", line 53, in forward
+    t = t.unsqueeze(-1).expand(n_batch, n_particles)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: expand(torch.cuda.FloatTensor{[256, 1, 1]}, size=[256, 9]): the number of sizes provided (2) must be greater or equal to the number of dimensions in the tensor (3)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type          | Params
+---------------------------------------------
+0 | flow_model | EGNN_dynamics | 205 K 
+---------------------------------------------
+205 K     Trainable params
+0         Non-trainable params
+205 K     Total params
+0.820     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type          | Params
+---------------------------------------------
+0 | flow_model | EGNN_dynamics | 205 K 
+---------------------------------------------
+205 K     Trainable params
+0         Non-trainable params
+205 K     Total params
+0.820     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+Traceback (most recent call last):
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 9, in <module>
+    from core.flows.gnn import EGNN_dynamics
+ModuleNotFoundError: No module named 'core.flows.gnn'
+[rank: 0] Received SIGTERM: 15
+cuda
+[rank: 0] Received SIGTERM: 15
+cuda
+Traceback (most recent call last):
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 9, in <module>
+    from core.flows.gnn import EGNN_dynamics
+ModuleNotFoundError: No module named 'core.flows.gnn'
+Traceback (most recent call last):
+  File "/mnt/ssd/flow_test/flash-div/20250514_lj9_flowtraining/train_flow.py", line 9, in <module>
+    from core.flows.gnn import EGNN_dynamics
+ModuleNotFoundError: No module named 'core.flows.gnn'
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:44: attribute 'flow_model' removed from hparams because it cannot be pickled
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type          | Params
+---------------------------------------------
+0 | flow_model | EGNN_dynamics | 613 K 
+---------------------------------------------
+613 K     Trainable params
+0         Non-trainable params
+613 K     Total params
+2.454     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:44: attribute 'flow_model' removed from hparams because it cannot be pickled
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type          | Params
+---------------------------------------------
+0 | flow_model | EGNN_dynamics | 613 K 
+---------------------------------------------
+613 K     Trainable params
+0         Non-trainable params
+613 K     Total params
+2.454     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+`Trainer.fit` stopped: `max_epochs=1000` reached.
+cuda
+`Trainer.fit` stopped: `max_epochs=1000` reached.
+cuda
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:199: Attribute 'flow_model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['flow_model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/utilities/parsing.py:44: attribute 'flow_model' removed from hparams because it cannot be pickled
+You are using a CUDA device ('NVIDIA GeForce RTX 3090 Ti') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+Missing logger folder: flow_model_lj9_2d_1.0_nb_data_1000000_batch_size_256_epochs_300_lr_0.0001/lightning_logs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name       | Type          | Params
+---------------------------------------------
+0 | flow_model | EGNN_dynamics | 155 K 
+---------------------------------------------
+155 K     Trainable params
+0         Non-trainable params
+155 K     Total params
+0.621     Total estimated model params size (MB)
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
+/home/sherryli/xsli/softwares/anaconda3/envs/lightning/lib/python3.11/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:441: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=11` in the `DataLoader` to improve performance.
