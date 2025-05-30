@@ -117,6 +117,86 @@ class FlowNet(nn.Module):
             xs += dt * vt
         return xs, curr_trace
 
+    # to be tested but I think it works
+    @torch.no_grad()
+    def sample_logprob_fulljac(self, xs, source_log_prob, n_steps = 100, **kwargs):
+        """
+        ODE integration returning the last position and associated logprob
+        The divergence is computed using the full vmapped jacobian computation
+        """
+
+        # need to do some weird unsqueeing
+        def fwd_unsq(x,t):
+            x,t = x.unsqueeze(0),t.unsqueeze(0)
+            return self(x,t).squeeze(0)
+
+        jac_fwd_unsq = jacrev(fwd_unsq, argnums=0) # functionnal call, jacrev viz first arg
+        bjac_fwd_unsq = vmap(jac_fwd_unsq, in_dims=(0,0)) # batched full jac returns (b,p,d,p,d)
+
+        # compute trace from full batched jacobian
+        def trace(x,t):
+            fj = bjac_fwd_unsq(x,t)
+            # print(fj.shape)
+            return einsum(fj, 'b i j i j -> b')
+
+
+        # print('in here')
+        dt = 1. / n_steps
+        xs = xs.detach().clone()
+        target_log_prob = source_log_prob(xs) #(batch)
+        batch_size = xs.shape[0]
+        for i in range(n_steps):
+            t = torch.ones((batch_size,1)).to(xs) * i * dt
+            # print(t.shape)
+            div = trace(xs,t)
+            target_log_prob -= div * dt
+            vt = self.forward(xs, t)
+            xs += dt * vt
+        return xs, target_log_prob
+
+
+# Parallel flows
+class ParallelFlow(FlowNet):
+    def __init__(self, base_flow, nb_heads):
+        super().__init__()
+        self.base_flow = base_flow
+        self.nb_heads = nb_heads
+        self.flows = nn.ModuleList(
+            [base_flow.instantiate() for _ in range(nb_heads)]
+        )
+
+
+    def forward(self, x, t):
+        """
+        Inputs
+        x :  (batch_size, nbpart, dim) --> This should scale to nbparticles in nd
+        t :  (batch_size, 1)
+
+        Outputs
+        v :  (batch_size, nbpart, dim)
+        """
+
+        xt = torch.zeros_like(x)
+        for i in range(self.nb_heads):
+            xt += self.flows[i](x, t)
+        return xt
+
+    @torch.no_grad()
+    def divergence(self, x, t):
+        """
+        Inputs
+        x :  (batch_size, nbpart, dim) --> weird but we want to try it in 2d first
+        t :  (batch_size, 1)
+
+        Outputs
+        v :  (batch_size)
+        """
+        div = torch.zeros(x.shape[0]).to(x)
+        for i in range(self.nb_heads):
+            xt += self.flows[i].divergence(x, t)
+
+        return xt
+
 
 ##### Base velocityNet
 

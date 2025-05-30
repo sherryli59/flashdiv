@@ -40,3 +40,28 @@ def make_periodic(x, boxlength):
     x = x.clone()
     x = x % boxlength
     return x
+
+def gen_sorted_gaussian(nbsamples, nparticles, dim, noise_scale):
+    """
+    Generate a sorted gaussian distribution
+    """
+    positions = torch.randn(nbsamples, nparticles, dim) * noise_scale
+    positions = positions[torch.arange(positions.size(0)).unsqueeze(-1), torch.argsort(positions[:, :, 0], dim=1)]
+    rd_cm = repeat(reduce(positions, 'b p d -> b 1 d', 'mean'), 'b 1 d -> b p d', p=nparticles)
+    return positions - rd_cm
+
+
+# make grid data for easier trke we do want to have everyone inside the box.inig.
+# Not too sure what to make of the boundary conditions here.
+# I feel like we need to enforce them for easier training
+# I also feel like we can combine this with a potential rotation
+def grid_data(nbsamples, nparticles, boxlength,dim, noise_scale, rotation = False):
+    positions = even_spacing(nparticles, boxlength, dim)
+    positions = repeat(positions,'p d -> r p 2', r=nbsamples)
+    positions + torch.randn_like(positions, noise_scale) * noise_scale
+    if rotation:
+        positions = twod_rotation(positions, 1) # rotates all systems by some random amount
+    # send them back in the box.
+    positions = make_periodic(positions, boxlength)
+    positions -= boxlength / 2 # center everyone around (should be in the box because of the periodic call.)
+    return positions

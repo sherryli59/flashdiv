@@ -283,3 +283,207 @@ class TransformerFlowLJ(FlowNet):
                 self.key_dim,
                 self.nbparticles
             )
+
+class EquivariantTransformerFlowLJ(FlowNet):
+    def __init__(self, input_dim, embed_dim, key_dim,  nbparticles):
+        super().__init__()
+        self.input_dim = input_dim
+        self.nbparticles = nbparticles
+        self.embed_dim = embed_dim
+        self.key_dim = key_dim
+
+        # we have multipe encoders to avoid the symmetry issue.
+        self.encoder =  nn.Linear(self.input_dim + 1, self.embed_dim)
+        self.decoder = nn.Linear(self.embed_dim, input_dim) # I guess this one can be shared for now and kept as a linear layer --> Note that if we have some MLP that's another call to jacobian
+        self.Q = nn.Linear(self.embed_dim, self.key_dim)
+        self.K = nn.Linear(self.embed_dim, self.key_dim)
+        self.V = nn.Linear(self.embed_dim, self.embed_dim)
+
+    def forward(self, x, t):
+        """
+        Inputs
+        x :  (batch_size, nbpart, dim) --> This should scale to nbparticles in nd
+        t :  (batch_size, 1)
+
+        Outputs
+        v :  (batch_size, nbpart, dim)
+        """
+
+
+        repeat_t = repeat(t, 'b 1 -> b p 1', p=self.nbparticles)
+        xt = torch.cat((x.clone(), repeat_t), dim=2)
+
+
+        # reshape
+        xt = rearrange(xt, 'b p d  -> p b d')
+        xt_encoded = self.encoder(rearrange(xt, 'b l d -> (b l) d'))
+
+        query = rearrange(
+            self.Q(xt_encoded),
+            '(b l) d -> b l d',
+            l = self.nbparticles
+        )
+
+
+        key = rearrange(
+            self.K(xt_encoded),
+            '(b l) d -> b l d',
+            l = self.nbparticles
+        )
+
+        value = rearrange(
+            self.V(xt_encoded),
+            '(b l) d -> b l d',
+            l = self.nbparticles
+        )
+
+
+        scaled_dot_product = F.scaled_dot_product_attention(query, key, value)
+
+        # print(scaled_dot_product.shape)
+        out = rearrange(
+            self.decoder(
+                rearrange(scaled_dot_product, 'b l d -> (b l) d')
+            ),
+            '(b l) d -> b l d',
+            l = self.nbparticles
+        )
+
+
+        return out
+
+    @torch.no_grad()
+    def divergence(self, x, t):
+        """
+        Inputs
+        x :  (batch_size, nbpart, dim) --> weird but we want to try it in 2d first
+        t :  (batch_size, 1)
+
+        Outputs
+        v :  (batch_size)
+        """
+        raise NotImplementedError("Equivariant divergence not implemented yet")
+
+    def instantiate(self):
+            return EquivariantTransformerFlowLJ(
+                self.input_dim,
+                self.embed_dim,
+                self.key_dim,
+                self.nbparticles
+            )
+
+class DirectionalTransformerFlowLJ(FlowNet):
+    def __init__(self, input_dim, embed_dim, key_dim,  nbparticles):
+        super().__init__()
+        self.input_dim = input_dim
+        self.nbparticles = nbparticles
+        self.embed_dim = embed_dim
+        self.key_dim = key_dim
+
+        # we have multipe encoders to avoid the symmetry issue.
+        self.encoder =  nn.Linear(self.input_dim + 1, self.embed_dim)
+        self.decoder = nn.Linear(self.embed_dim, input_dim) # I guess this one can be shared for now and kept as a linear layer --> Note that if we have some MLP that's another call to jacobian
+        self.Q = nn.Linear(self.embed_dim, self.key_dim)
+        self.K = nn.Linear(self.embed_dim, self.key_dim)
+        self.V = nn.Linear(self.input_dim+1, self.embed_dim) # we will modify this one to take this information of pairwise directionnality into account, as well as time
+
+    def forward(self, x, t):
+        """
+        Inputs
+        x :  (batch_size, nbpart, dim) --> This should scale to nbparticles in nd
+        t :  (batch_size, 1)
+
+        Outputs
+        v :  (batch_size, nbpart, dim)
+        """
+
+
+        repeat_t = repeat(t, 'b 1 -> b p 1', p=self.nbparticles)
+        xt = torch.cat((x.clone(), repeat_t), dim=2)
+
+
+        # reshape
+        xt = rearrange(xt, 'b p d  -> p b d')
+        xt_encoded = self.encoder(rearrange(xt, 'b l d -> (b l) d'))
+
+        query = rearrange(
+            self.Q(xt_encoded),
+            '(b l) d -> b l d',
+            l = self.nbparticles
+        )
+
+
+        key = rearrange(
+            self.K(xt_encoded),
+            '(b l) d -> b l d',
+            l = self.nbparticles
+        )
+
+        # compute the dot products
+        # decompose the dotattention operation because we will need these matrices after
+        r_q = repeat(query, 'b p d -> b p r d', r=self.nbparticles)
+        r_k = repeat(key, 'b p d -> b r p d', r=self.nbparticles)
+        # r_v = repeat(value, 'b p d -> b r p d', r=self.nbparticles)
+        scale = 1 / r_q.shape[-1] ** 0.5
+        dot_prod = (r_q * r_k).sum(-1) * scale # this is litterally the attention matrix
+        sm = F.softmax(dot_prod, dim=-1) # (b, p, p)
+
+
+        # compute the pairwise directional information
+        x_r = repeat(x, 'b p d -> b p r1 d', r1=self.nbparticles)
+        pairwise_directions = x_r - rearrange(x_r, 'b p r1 d -> b r1 p d') # (b, p, p, d)
+
+
+        pairwise_directions_encoded = rearrange(
+            torch.cat((pairwise_directions,repeat(t, 'b 1 -> b p p2 1', p=self.nbparticles, p2=self.nbparticles)), dim=-1), # (b, p, p, d+1),
+            'b p p2 d -> (b p p2) d'
+            )
+        # compute the pairwise directional information
+        values_ = self.V(pairwise_directions_encoded)
+
+        value = rearrange(
+            values_,
+            '(b p1 p2) d -> b p1 p2 d',
+            b = x.shape[0],
+            p1 = self.nbparticles,
+            p2 = self.nbparticles,
+        )
+
+
+        # compute the "scaled dot product" attention
+        out = rearrange(
+                self.decoder(
+                    rearrange(
+                        reduce(
+                            value * sm.unsqueeze(-1),
+                            'b p p2 d -> b p d',
+                            'sum'
+                        ),
+                        'b p d -> (b p) d'
+                    )
+                ),
+                '(b p) d -> b p d',
+                p = self.nbparticles
+            )
+
+        return out
+
+    @torch.no_grad()
+    def divergence(self, x, t):
+        """
+        Inputs
+        x :  (batch_size, nbpart, dim) --> weird but we want to try it in 2d first
+        t :  (batch_size, 1)
+
+        Outputs
+        v :  (batch_size)
+        """
+        raise NotImplementedError("Equivariant divergence not implemented yet")
+
+    def instantiate(self):
+            return DirectionalTransformerFlowLJ(
+                self.input_dim,
+                self.embed_dim,
+                self.key_dim,
+                self.nbparticles
+            )
