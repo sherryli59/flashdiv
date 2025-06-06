@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-
+#set up flashdiv package
 setup(
     name='flashdiv',
     version='0.1.0',
