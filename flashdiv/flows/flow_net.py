@@ -112,7 +112,8 @@ class FlowNet(nn.Module):
             xs = xs.detach().clone()
             xs.requires_grad_(True)
             with torch.enable_grad():
-                curr_trace += self.divergence(xs, t, **kwargs) * dt
+                div = self.divergence(xs, t, **kwargs).detach()
+                curr_trace = curr_trace + div * dt
             vt = self.forward(xs, t)
             xs = xs + dt * vt
         return xs, curr_trace

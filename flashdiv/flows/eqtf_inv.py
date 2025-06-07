@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from core.flows.architectures import FlowNet
+from flashdiv.flows.flow_net import FlowNet
 from einops import rearrange, repeat, reduce
 import torch.nn.functional as F
 
@@ -29,7 +29,7 @@ class EqTransformerFlowLJ(FlowNet):
         self.edges = None
         self._edges_dict = {}
 
-    def forward(self, x, t):
+    def forward_vmap(self, x, t):
         """
         This is a rot and perm equivariant flow field, that uses the “softmax attention mechanism” on featured radial distances.
         In the Noe paper they compose multiple similar layers, but our bane, or advantage, is that we want only one
@@ -98,7 +98,7 @@ class EqTransformerFlowLJ(FlowNet):
             'sum')
         return out
 
-    def forward_fast(self, x, t):
+    def forward(self, x, t):
         """
         This is a rot and perm equivariant flow field, that uses the “softmax attention mechanism” on featured radial distances.
         In the Noe paper they compose multiple similar layers, but our bane, or advantage, is that we want only one
@@ -229,18 +229,23 @@ class EqTransformerFlowLJ(FlowNet):
         flat_features = torch.cat((feat_radial , flat_t), dim=-1)
         scale = self.scaler(flat_features) #((b p p ) 1)
 
-        # call backward to accumulate
-        scale.sum().backward()
-        dscale = feat_radial.grad
-        feat_radial.grad = None # reset grad to None
+        # compute gradient of scale.sum() w.r.t. feat_radial
+        (dscale,) = torch.autograd.grad(
+            outputs=scale.sum(),
+            inputs=feat_radial,
+            create_graph=True
+        )
+
 
         # pass features throught the encoder
         flat_features = self.encoder(flat_features) #((b p p ) 1)
 
-        # same trick
-        flat_features.sum().backward()
-        dfeat = feat_radial.grad
-        feat_radial.grad = None # reset grad to None
+        # compute gradient of flat_features.sum() w.r.t. feat_radial
+        (dfeat,) = torch.autograd.grad(
+            outputs=flat_features.sum(),
+            inputs=feat_radial,
+            create_graph=True
+            )
 
 
         # now we have to reshape to do a soft max operation.
@@ -331,10 +336,3 @@ class EqTransformerFlowLJ(FlowNet):
         )
 
         return divergence
-
-    def instantiate(self):
-            return DirectionalTransformerFlowLJ(
-                self.input_dim,
-                self.embed_dim,
-                self.nbparticles
-            )

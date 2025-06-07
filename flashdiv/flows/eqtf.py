@@ -61,7 +61,7 @@ class EqTransformerFlowLJ(FlowNet):
         flat_t = repeat(t, 'b -> (b p ) 1', p=(batches==0).sum()) # no cross terms
 
         flat_features = torch.cat((radial, flat_t), dim=-1)
-        scale = self.scaler(flat_features) #((b p p ) 1)    
+        scale = self.scaler(flat_features) #((b p p ) 1)
         # pass features throught the encoder
         flat_features = self.encoder(flat_features) #((b p p ) 1)
         i_mod = edges[0] % n_particles
@@ -138,7 +138,7 @@ class EqTransformerFlowLJ(FlowNet):
         flat_t = repeat(t, 'b -> (b p ) 1', p=(batches==0).sum()) # no cross terms
 
         flat_features = torch.cat((radial, flat_t), dim=-1)
-        scale = self.scaler(flat_features) #((b p p ) 1)    
+        scale = self.scaler(flat_features) #((b p p ) 1)
         # pass features throught the encoder
         flat_features = self.encoder(flat_features) #((b p p ) 1)
 
@@ -257,7 +257,7 @@ class EqTransformerFlowLJ(FlowNet):
             create_graph=True
 )
 
-        
+
         # now we have to reshape to do a soft max operation.
 
         # these might have an extra particle, but it can be a problem for later.
@@ -275,7 +275,7 @@ class EqTransformerFlowLJ(FlowNet):
         dscales = torch.zeros_like(sm, device=x.device, dtype=dscale.dtype)
         dfeatures = torch.zeros_like(sm, device=x.device, dtype=dfeat.dtype)
 
-        
+
         # fill in alll the arrays needed
         i_mod = edges[0] % n_particles
         j_mod = edges[1] % n_particles
@@ -287,7 +287,7 @@ class EqTransformerFlowLJ(FlowNet):
 
         #softmax
         sm = F.softmax(sm, dim=-2)
-        
+
         # divergence vector to be filled
         divergence = torch.zeros(
             (n_batch, n_particles, x.shape[-1]),
@@ -297,7 +297,7 @@ class EqTransformerFlowLJ(FlowNet):
         )
 
         #linear term
-        
+
         divergence += reduce(
             sm * scales,  # (b, p, p, d),
             'b p1 p2 d -> b p1 d',
@@ -332,12 +332,10 @@ class EqTransformerFlowLJ(FlowNet):
             'b p1 p2 d -> b p1 d',
             'sum'
             )
-        
+
         divergence = reduce(
             divergence,
             'b p d -> b',
             'sum'
         )
         return divergence
-
-
