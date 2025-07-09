@@ -1,8 +1,5 @@
 import torch.nn as nn
 import torch
-from einops import rearrange, repeat, reduce
-from torch.func import jvp
-
 # base class
 class FlowNet(nn.Module):
     def __init__(self):
@@ -13,7 +10,7 @@ class FlowNet(nn.Module):
         raise NotImplementedError("Override this method in subclasses")
 
     @torch.no_grad()
-    def divergence2(self, x,t, div_samples=int(1e3)):
+    def divergence(self, x,t, div_samples=int(1e2)):
         """
         hutchison trace estimator
         """

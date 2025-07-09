@@ -8,8 +8,8 @@ import torch.nn.functional as F
 Same architecture as before, but the features derive from the 1 / (dij - d_min)
 """
 
-class EqTransformerFlowLJ(FlowNet):
-    def __init__(self, input_dim, embed_dim=128, dmin=1.0):
+class EqTransformerFlowLJInv(FlowNet):
+    def __init__(self, input_dim, embed_dim=256, dmin=1.0):
         super().__init__()
         self.input_dim = input_dim
         self.embed_dim = embed_dim
@@ -54,8 +54,8 @@ class EqTransformerFlowLJ(FlowNet):
         # compute pairwaise distances and direction information
         radial, coord_diff = self.coord2radial(edges, flat_coord) # one big matrix of size ((b p p) 1)
         sq_radial = radial ** 0.5
-        sq_radial_shift = sq_radial - self.dmin
-        feat_radial  = 1 / sq_radial_shift
+        #sq_radial_shift = sq_radial - self.dmin
+        feat_radial  = 1 / sq_radial.clamp(min=0.01)  # clamp to avoid division by zero
 
         flat_t = repeat(t, 'b -> (b p ) 1', p=(batches==0).sum()) # no cross terms
         flat_features = torch.cat((feat_radial, flat_t), dim=-1)
@@ -123,9 +123,10 @@ class EqTransformerFlowLJ(FlowNet):
         # compute pairwaise distances and direction information
         radial, coord_diff = self.coord2radial(edges, flat_coord) # one big matrix of size ((b p p) 1)
         sq_radial = radial ** 0.5
-        sq_radial_shift = sq_radial - self.dmin
-        feat_radial  = 1 / sq_radial_shift
-
+        #sq_radial_shift = sq_radial - self.dmin
+        #feat_radial  = 1 / sq_radial_shift
+        feat_radial = 1 / sq_radial
+        feat_radial = feat_radial.clamp(max=50)  # clamp to avoid division by zero
         flat_t = repeat(t, 'b -> (b p ) 1', p=(batches==0).sum()) # no cross terms
         flat_features = torch.cat((feat_radial, flat_t), dim=-1)
         scale = self.scaler(flat_features) #((b p p ) 1)
@@ -195,81 +196,43 @@ class EqTransformerFlowLJ(FlowNet):
         return radial, coord_diff
 
 
-    def divergence(self, x, t):
-        """
-        Inputs
-        x :  (batch_size, nbpart, dim) --> weird but we want to try it in 2d first
-        t :  (batch_size, 1)
-        Outputs
-        v :  (batch_size)
-        """
-
-        # start with essential compute
-        n_batch = x.shape[0]
-        n_particles = x.shape[1]
-        # steal MW’s trick --> this assigns self.eges the first time.
-        # Doesn’t work for batches bcs batch size might very.
+    def divergence_wrong(self, x, t):
+        n_batch, n_particles, dim = x.shape
         if self.edges is None:
             self.edges = self._create_edges(n_particles)
-        batches,edgesi,edgesj = self._cast_edges2batch(self.edges, n_batch, n_particles)
+        batches, edgesi, edgesj = self._cast_edges2batch(self.edges, n_batch, n_particles)
         edges = [edgesi.to(x.device), edgesj.to(x.device)]
         batches = batches.to(x.device)
+
         flat_coord = rearrange(x, 'b p d -> (b p) d')
-        # compute pairwaise distances and direction information
-        radial, coord_diff = self.coord2radial(edges, flat_coord) # one big matrix of size ((b p p) 1)
-        sq_radial = radial ** 0.5
-        sq_radial_shift = sq_radial - self.dmin
-        feat_radial  = 1 / sq_radial_shift
+        radial, coord_diff = self.coord2radial(edges, flat_coord)  # ((b*p*p), 1), ((b*p*p), d)
+        sq_radial = radial.sqrt().clamp(min=1e-4)
+        feat_radial = (1 / sq_radial).clone().detach().requires_grad_(True)
 
+        flat_t = repeat(t, 'b -> (b p) 1', p=(batches == 0).sum())
+        flat_features = torch.cat((feat_radial, flat_t), dim=-1)
 
-        # requires grad on radial
-        feat_radial.requires_grad_(True)
-
-        flat_t = repeat(t, 'b -> (b p ) 1', p=(batches==0).sum()) # no cross terms
-        flat_features = torch.cat((feat_radial , flat_t), dim=-1)
-        scale = self.scaler(flat_features) #((b p p ) 1)
-
-        # compute gradient of scale.sum() w.r.t. feat_radial
-        (dscale,) = torch.autograd.grad(
-            outputs=scale.sum(),
-            inputs=feat_radial,
-            create_graph=True
+        scale = self.scaler(flat_features)
+        dscale, = torch.autograd.grad(
+            scale.sum(), feat_radial, create_graph=True, retain_graph=True
         )
 
-
-        # pass features throught the encoder
-        flat_features = self.encoder(flat_features) #((b p p ) 1)
-
-        # compute gradient of flat_features.sum() w.r.t. feat_radial
-        (dfeat,) = torch.autograd.grad(
-            outputs=flat_features.sum(),
-            inputs=feat_radial,
-            create_graph=True
-            )
-
-
-        # now we have to reshape to do a soft max operation.
-
-        # these might have an extra particle, but it can be a problem for later.
-        sm = torch.zeros(
-            (n_batch, n_particles, n_particles,1),
-            device=x.device,
-            dtype=flat_features.dtype
+        flat_features = self.encoder(flat_features)
+        dfeat, = torch.autograd.grad(
+            flat_features.sum(), feat_radial, create_graph=True, retain_graph=True
         )
-        diffs = torch.zeros(
-            (n_batch, n_particles, n_particles, x.shape[-1]),
-            device=x.device,
-            dtype=flat_features.dtype
-        )
-        sq_radials = torch.zeros_like(sm, device=x.device, dtype=flat_features.dtype)
-        scales = torch.zeros_like(sm, device=x.device, dtype=flat_features.dtype)
-        dscales = torch.zeros_like(sm, device=x.device, dtype=dscale.dtype)
-        dfeatures = torch.zeros_like(sm, device=x.device, dtype=dfeat.dtype)
 
+        # Init output tensors
+        sm = torch.zeros((n_batch, n_particles, n_particles, 1), device=x.device)
+        diffs = torch.zeros((n_batch, n_particles, n_particles, dim), device=x.device)
+        scales = torch.zeros_like(sm)
+        dscales = torch.zeros_like(sm)
+        dfeatures = torch.zeros_like(sm)
+        sq_radials = torch.zeros_like(sm)
 
-        # fill in alll the arrays needed
         i_mod = edges[0] % n_particles
         j_mod = edges[1] % n_particles
+
         sm[batches, i_mod, j_mod] = flat_features
         diffs[batches, i_mod, j_mod] = coord_diff
         scales[batches, i_mod, j_mod] = scale
@@ -277,62 +240,17 @@ class EqTransformerFlowLJ(FlowNet):
         dfeatures[batches, i_mod, j_mod] = dfeat
         sq_radials[batches, i_mod, j_mod] = sq_radial
 
-
-
-        #softmax
+        # Softmax
         sm = F.softmax(sm, dim=-2)
+        inv_r = 1.0 / sq_radials.clamp(min=1e-4)
+        r_vec = diffs * inv_r
 
-        # divergence vector to be filled
-        divergence = torch.zeros(
-            (n_batch, n_particles, x.shape[-1]),
-            device=x.device,
-            dtype=flat_features.dtype,
-            requires_grad=False
-        )
+        # Compute all divergence terms
+        div_linear = torch.sum(sm * scales, dim=2)
+        div_scale = torch.sum(sm * dscales * (-r_vec), dim=2)
+        sm_grad = (-sm * dfeatures * r_vec).sum(dim=2, keepdim=True)
+        div_softmax = torch.sum(sm * scales * diffs * sm_grad, dim=2)
+        div_cross = torch.sum(sm * scales * dfeatures * (-r_vec), dim=2)
 
-        #linear term
-
-        divergence += reduce(
-            sm * scales,  # (b, p, p, d),
-            'b p1 p2 d -> b p1 d',
-            'sum'
-        )
-
-
-        #scales term
-        divergence += reduce(
-            diffs *  sm * dscales * (-1) / (sq_radials - self.dmin) ** 2 * (diffs / sq_radials).nan_to_num(0.0),
-            'b p1 p2 d -> b p1 d',
-            'sum'
-        )
-
-        #sm term
-
-        # non cross terms
-        sm_ = repeat(
-            (- sm * dfeatures * (-1) / (sq_radials - self.dmin) ** 2 * (diffs / sq_radials).nan_to_num(0.0)).sum(-2) ,
-            'b p1 d -> b p1 p2 d',
-            p2=n_particles
-        )
-
-        divergence += reduce(
-            (sm_ * sm * scales * diffs),
-            'b p1 p2 d -> b p1 d',
-            'sum'
-            )
-
-        #cross terms
-        divergence += reduce(
-            (diffs * sm * scales * dfeatures * (-1) / (sq_radials - self.dmin) ** 2 * (diffs / sq_radials).nan_to_num(0.0)),
-            'b p1 p2 d -> b p1 d',
-            'sum'
-            )
-
-        # final sum
-        divergence = reduce(
-            divergence,
-            'b p d -> b',
-            'sum'
-        )
-
-        return divergence
+        divergence = div_linear + div_scale + div_softmax + div_cross
+        return divergence.sum(dim=(1, 2))  # return (B,)
