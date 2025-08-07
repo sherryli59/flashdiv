@@ -1,6 +1,6 @@
 import torch, argparse, os
 import numpy as np
-from lj import LJ
+from flashdiv.lj.lj import LJ
 import matplotlib.pyplot as plt
 from numpy.lib.format import open_memmap
 
@@ -186,7 +186,7 @@ def run_MALA(target, x_init, n_steps, dt, adaptive=True,
     x (tensor): init points for the chains to update (batch_dim, dim)
     dt -> is multiplied by N for the phiFour before being passed
     '''
-
+    print("Running MALA")
     acc = 0
     idx = 0
     pot_list = []
@@ -222,6 +222,7 @@ def run_MALA(target, x_init, n_steps, dt, adaptive=True,
                 # Center the center of mass
                 com = x.mean(dim=1, keepdim=True)
                 x -= com
+            print(idx)
             xs[idx] = x.detach().cpu().numpy()
             idx += 1
         if (i < burn_in) and (i % save_every) == 0:
@@ -231,6 +232,7 @@ def run_MALA(target, x_init, n_steps, dt, adaptive=True,
                     dt *= 1 - 0.5*(0.3-acc_rate.detach().cpu().numpy())
                 elif acc_rate >0.5:
                     dt *= 1 + 0.5*(acc_rate.detach().cpu().numpy()-0.5)
+        if (i % save_every) == 0:
             print("Step %d, acc_rate %.3f, dt %.6f"%(i, acc_rate, dt))
     return xs, acc/n_steps
 

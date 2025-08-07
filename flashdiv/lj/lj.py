@@ -163,8 +163,7 @@ class LJ(BaseDistribution):
     def pair_vec(self,particle_pos):
         pair_vec = (particle_pos.unsqueeze(-2) - particle_pos.unsqueeze(-3))
         if self.periodic:
-            to_subtract = ((torch.abs(pair_vec)> 0.5 * self.boxlength)
-                        * torch.sign(pair_vec) * self.boxlength)
+            to_subtract = torch.round(pair_vec / self.boxlength) * self.boxlength
             pair_vec -= to_subtract
         return pair_vec
 

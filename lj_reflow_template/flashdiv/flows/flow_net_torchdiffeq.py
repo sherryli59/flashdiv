@@ -1,11 +1,11 @@
 import torch.nn as nn
 import torch
 from einops import rearrange, repeat, reduce
-from torch.func import jvp, vmap, jacrev
-from torchdiffeq import odeint as odeint
+from torch.func import jvp, jacrev, vmap
+# import ode solver class
+from torchdiffeq import odeint
 
-
-
+# base class
 class FlowNet(nn.Module):
     def __init__(self):
         super().__init__()
@@ -89,47 +89,85 @@ class FlowNet(nn.Module):
         batch_size = x0.shape[0]
         npart = x0.shape[-2]
         dim = x0.shape[-1]
+        print(kwargs)
+        boxlength = kwargs.pop('boxlength', None)
 
         if 'method' not in  kwargs:
             kwargs['method'] = 'euler'
         # print(kwargs)
 
         # little reshaping here
-        def integration_func(t, xs):
-            t_ = torch.ones(batch_size).to(xs) * t.item()
-            return self.forward(xs, t_).detach()
+        # inorder to have some callback to the forward method we need to define this as a class
+
+        # we do this so we can pass some callbacks
+        class IntegrationFunc:
+            def __init__(self, model):
+                self.model = model
+
+            def __call__(self, t, xs):
+                # print('calling')
+                t_ = torch.ones(batch_size).to(xs) * t.item()
+                return self.model.forward(xs, t_).detach()
+
+        integration_func = IntegrationFunc(self)
+
+        # watch out, I had to modify the core code for callback to act on the state
+        if boxlength is not None:
+
+            # this is an inplace modification of xs
+            def mod(xs):
+                xs%=boxlength
+
+            setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs)) # this is an inplace operation on xs, which we carry on throught the next integration step
 
         return odeint(integration_func, x0, times, **kwargs)
 
 
+  
     # @torch.no_grad()
-    def sample_logprob(self, x0, logprob0, times, verbose=False,**kwargs):
+    def sample_logprob(self, x, logprob=None, times=None, reverse=False, verbose=False, **kwargs):
         """
-        ODE integration returning the trajectory and logprob
-        """
-        batch_size = x0.shape[0]
-        npart = x0.shape[-2]
-        dim = x0.shape[-1]
+        ODE integration returning the trajectory and logprob.
 
-        if 'method' not in  kwargs:
+        Args:
+            x: initial position (x0 if forward, x1 if reverse)
+            logprob: initial log probability (if reverse=False)
+            times: time vector (optional)
+            reverse: if True, integrate from t=1 to t=0
+            verbose: print diagnostic info
+            kwargs: passed to odeint and divergence
+        """
+        batch_size = x.shape[0]
+        npart = x.shape[-2]
+        dim = x.shape[-1]
+
+        boxlength = kwargs.pop('boxlength', None)
+
+        # time setup
+        if times is None:
+            times = torch.linspace(0, 1, 2).to(x.device)
+        if reverse:
+            times = torch.flip(times, dims=[0])
+
+        if 'method' not in kwargs:
             kwargs['method'] = 'euler'
         if 'options' not in kwargs:
             kwargs['options'] = {'step_size': 1 / 100}
 
-        # some logic to determine which divergence to use.
+        # divergence method selection
         div_kwargs = {}
         if 'div_method' in kwargs:
-                if kwargs['div_method'] == 'hutch':
-                    self._divergence = self.divergence_hutch
-                    if 'div_samples' in kwargs:
-                        div_kwargs['div_samples'] = kwargs.pop('div_samples')
-                elif kwargs['div_method'] == 'full_jacobian':
-                    self._divergence = self.divergence_full_jacobian
-                elif kwargs['div_method'] == 'direct_trace':
-                    self._divergence = self.direct_trace
-                else:
-                    raise ValueError(f"Unknown divergence method: {kwargs['div_method']}, possible values are 'hutch', 'full_jacobian, direct_trace'")
-                del kwargs['div_method'] # because we pas to odeint after
+            if kwargs['div_method'] == 'hutch':
+                self._divergence = self.divergence_hutch
+                if 'div_samples' in kwargs:
+                    div_kwargs['div_samples'] = kwargs.pop('div_samples')
+            elif kwargs['div_method'] == 'full_jacobian':
+                self._divergence = self.divergence_full_jacobian
+            elif kwargs['div_method'] == 'direct_trace':
+                self._divergence = self.direct_trace
+            else:
+                raise ValueError(f"Unknown divergence method: {kwargs['div_method']}")
+            del kwargs['div_method']
         elif hasattr(self, 'divergence'):
             self._divergence = self.divergence
         else:
@@ -138,46 +176,62 @@ class FlowNet(nn.Module):
 
         if verbose:
             print("Using divergence method:", self._divergence.__name__)
+            print("Integrating", "backward" if reverse else "forward")
+            
+        if logprob is None:
+            if reverse:
+                logprob = torch.zeros(batch_size, device=x.device)
+            else:
+                raise ValueError("logprob must be provided for forward sampling.")
 
+        # pack state
         state0 = torch.cat(
-            (x0,
-            repeat(
-                logprob0,
-                'b -> b p d',
-                p=npart, d=dim
-            )),
+            (
+                x,
+                repeat(
+                    logprob,
+                    'b -> b p d',
+                    p=npart, d=dim
+                )
+            ),
             dim=0
         )
 
-        # little reshaping here
-        def integration_func(t, state):
-            xs = state[:batch_size]
-            t_ = torch.ones(batch_size).to(xs) * t.item()
-            v = self.forward(xs, t_).detach()
-            div = self._divergence(xs, t_, **div_kwargs).detach()
-            return torch.cat(
-                (v,
-                repeat(
-                    - div,
-                    'b -> b p d',
-                    p=npart, d=dim
-                )),
-                dim=0
-            ).detach()
+        class IntegrationFunc:
+            def __init__(self, model):
+                self.model = model
+
+            def __call__(self, t, state):
+                xs = state[:batch_size]
+                t_ = torch.full((batch_size,), t.item(), device=xs.device)
+                div = self.model._divergence(xs, t_, **div_kwargs).detach()
+                v = self.model.forward(xs, t_).detach()
+                # flip sign for reverse integration
+                vel = -v if reverse else v
+                dlogp = div if reverse else -div
+
+                return torch.cat(
+                    (
+                        vel,
+                        repeat(
+                            dlogp,
+                            'b -> b p d',
+                            p=npart, d=dim
+                        )
+                    ),
+                    dim=0
+                ).detach()
+
+        integration_func = IntegrationFunc(self)
+
+        # optional: box wrapping per step
+        if boxlength is not None:
+            def mod(xs):
+                xs[:batch_size] %= boxlength
+            setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
 
         integrated_state = odeint(integration_func, state0, times, **kwargs)
         all_xs = integrated_state[:, :batch_size]
         all_logprobs = integrated_state[:, batch_size:, 0, 0]
 
         return all_xs, all_logprobs
-
-
-
-
-
-
-
-
-
-
-

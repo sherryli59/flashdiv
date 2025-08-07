@@ -1,6 +1,42 @@
 import torch
 import math
 import numpy as np
+from mpmath import jtheta # wrapped gaussian computations
+import mpmath as mp
+
+mp.dps = 25
+
+class BreakAllLoops(Exception):
+    pass
+
+def even_spacing(nparticles, boxlength, dim):
+    '''
+    nparticles: number of particles
+    boxlength: boxlength
+    '''
+    positions = torch.zeros((nparticles, dim))
+    num_per_dim = int(np.ceil(nparticles ** (1. / dim)))
+    spacing = boxlength / num_per_dim
+    try:
+        if dim == 3:
+            for i in range(num_per_dim):
+                for j in range(num_per_dim):
+                    for k in range(num_per_dim):
+                        idx = i * num_per_dim ** 2 + j * num_per_dim + k
+                        if idx >= nparticles:
+                            raise BreakAllLoops()
+                        positions[idx] = torch.tensor([i, j, k]) * spacing
+        elif dim == 2:
+            for i in range(num_per_dim):
+                for j in range(num_per_dim):
+                    idx = i * num_per_dim + j
+                    if idx >= nparticles:
+                        raise BreakAllLoops()
+                    positions[idx] = torch.tensor([i, j]) * spacing
+
+    except BreakAllLoops:
+        pass
+    return positions
 
 class BaseDistribution(torch.nn.Module):
     def __init__(self, nparticles=4, dim=2, batch_size=10, device='cuda'):
@@ -160,12 +196,14 @@ class LJ(BaseDistribution):
             total_force += self.harmonic_force(particle_pos)
         return total_force
 
+    # unfortunately this one breaks when particles start to be too far away.
     def pair_vec(self,particle_pos):
         pair_vec = (particle_pos.unsqueeze(-2) - particle_pos.unsqueeze(-3))
         if self.periodic:
-            to_subtract = ((torch.abs(pair_vec)> 0.5 * self.boxlength)
-                        * torch.sign(pair_vec) * self.boxlength)
+            to_subtract = torch.round(pair_vec / self.boxlength) * self.boxlength
             pair_vec -= to_subtract
+        else:
+            pair_vec = (particle_pos.unsqueeze(-2) - particle_pos.unsqueeze(-3))
         return pair_vec
 
     def g_r(self,particle_pos, bins=100):
@@ -197,3 +235,246 @@ class LJ(BaseDistribution):
             areas = 4*math.pi*((bins[:-1]+bins[1:])/2)**2*(bins[1:]-bins[:-1])
             g_r = counts/nsamples/areas/bulk_density
         return bins, g_r
+
+    def sample_wrapped_gaussian_1(self, std, size=1, device=None, logprobs = True):
+        """
+        Sample from an N-D Gaussian and wrap the result into a box of size `wrap`.
+        Args:
+            mean: array-like, shape (dim,)
+            cov: array-like, shape (dim, dim)
+            wrap: float, the box size to wrap into (default 2*pi)
+            size: int, number of samples
+            device: torch.device or None
+        Returns:
+            samples: torch.Tensor, shape (size, particles, dim)
+        """
+
+        # this is a wrapped gaussian pdf
+        def f(x, mu):
+            q = np.exp(- (std / self.boxlength * 2 * np.pi) ** 2 / 2)
+            z = np.pi * (x-mu) / self.boxlength
+            return float(jtheta(3, z, q) / (self.boxlength))
+
+
+        mean = even_spacing(self.nparticles, self.boxlength, self.dim).flatten()
+        # print(mean)
+        cov = np.eye(mean.shape[0]) * std ** 2
+        mean = np.asarray(mean)
+        cov = np.asarray(cov)
+        # dim = mean.shape[0]
+        samples = np.random.multivariate_normal(mean, cov, size=size)
+        # print(samples - )
+        samples_wrapped = np.mod(samples, self.boxlength)
+        samples_wrapped = torch.tensor(samples_wrapped, dtype=torch.float32)
+        # print(samples_wrapped.shape, torch.tensor(mean).unsqueeze(0).expand(size, -1).shape)
+        # compute sample log prob
+
+        if logprobs:
+            logprobs_ = torch.log(torch.tensor([f(s.item(), m.item()) for s, m in zip(samples_wrapped.flatten(), torch.tensor(mean).unsqueeze(0).expand(size, -1).flatten())]))
+            logprobs_ = logprobs_.reshape(size, self.nparticles, self.dim).sum(dim=(-1,-2))
+        else:
+            logprobs_ = torch.zeros(size, device=samples_wrapped.device)
+
+        if device is not None:
+            samples_wrapped = samples_wrapped.to(device)
+            logprobs_ = logprobs_.to(device)
+        return  samples_wrapped.reshape(-1, self.nparticles, self.dim), logprobs_
+
+    def sample_uniform(self, size, device=None):
+        """
+        Uniformly sample particle configurations inside the box.
+
+        Args:
+            size (int): number of configurations
+            device: optional torch device
+
+        Returns:
+            samples (Tensor): shape (size, nparticles, dim)
+            logp (Tensor): shape (size,), uniform log probability
+        """
+        L = self.boxlength
+        P = self.nparticles
+        D = self.dim
+
+        if device is None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        samples = torch.rand(size, P, D, device=device) * L - L / 2
+
+        # Logprob of uniform over box of volume L^PD
+        logp = -P * D * torch.log(torch.tensor(L, device=device))
+        logp = logp.expand(size)
+
+        return samples, logp
+    
+    def sample_wrapped_gaussian(self, std, size,  device=None, offsets=None):
+        """
+        size   : number of configurations
+        std    : sigma of the *unwrapped* Gaussian
+        """
+        L  = self.boxlength
+        P  = self.nparticles
+        D  = self.dim
+        if device is None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # mean positions: even spacing on the torus
+        mean = even_spacing(P, L, D).to(device)  # (P, D)
+        cov  = std ** 2 * torch.eye(P * D, device=device)
+
+        # sample and wrap
+        flat = torch.distributions.MultivariateNormal(mean.flatten(), cov).sample((size,))
+        samples = flat.view(size, P, D).remainder(L)
+
+        mu = mean.expand(size, -1, -1)           # (size,P,D)
+
+        if offsets is None:
+            logp = wrapped_normal_logpdf(samples, mu, std, L).sum((-1, -2))
+        else:
+            # compute logpdf with nearest neighbors
+            # no easier way to do here for now.
+            logp = wrapped_normal_logpdf_neighbors(samples, mu, std, L, offsets=offsets) #(B O P, D)
+            p = torch.exp(logp).reshape(size, -1, P * D)  # (B, O, P * D)
+            p = p.prod(dim=-1)  # (B, O )
+            logp = torch.log(p.sum(-1))  # (B, O)
+            # .sum((-1, -2, -3))
+
+        return samples.to(device), logp.to(device)
+
+    def force_softcore(
+        self,
+        particle_pos: torch.Tensor,
+        lambda_t: torch.Tensor | float,
+        a_sc: float = 0.5,           # “α_LJ” soft-core prefactor
+        min_dist: float | None = None,
+        turn_off_harmonic: bool = False,
+        s: float = 2.0,              # power on λ inside softcore term
+        t: float = 1.0,              # decay exponent on (1−λ) outside
+        n: float = 6.0,              # softness exponent
+    ):
+        """
+        Soft-core (Beutler-style) Lennard-Jones force with time-dependent coupling λ(t).
+
+        U_sc(r;λ) = 4 ε (1−λ)^t * [ (α_LJ λ^s + (r/σ)^n )^{-12/n} − (same)^{-6/n} ]
+        F = −∇_r U_sc
+
+        Returns
+        -------
+        total_force : (B, N, D) tensor  — negative gradient of U_sc
+        """
+        # Pair vectors & distances
+        if torch.isnan(particle_pos).any():
+            print("lambda_t:", lambda_t)
+            raise ValueError("particle_pos contains NaN values")
+
+        pair_vec = self.pair_vec(particle_pos)                 # (B,N,N,D)
+        r = torch.linalg.norm(pair_vec.float(), dim=-1)        # (B,N,N)
+        # mask self-interaction to avoid r = 0
+        diag_mask = torch.eye(r.size(-1), device=r.device, dtype=torch.bool)
+        r = r.masked_fill(diag_mask, 1.0)
+
+        if min_dist is not None:
+            r = torch.clamp(r, min=min_dist)
+        sigma = self.sigma
+        epsilon = self.epsilon
+        B = r.shape[0]
+
+        # prepare λ tensor
+        λ = torch.as_tensor(lambda_t, device=r.device, dtype=r.dtype)
+        λ = λ.view(B, *([1] * (r.ndim - 1)))  # shape (B,1,1)
+        λs = λ ** s
+        λ_decay = (1.0 - λ) ** t
+
+        # softcore term A = a_sc * λ^s + (r/σ)^n
+        r_scaled = r / sigma
+        r_scaled_n = r_scaled ** n
+        A = a_sc * λs + r_scaled_n
+        A = torch.clamp(A, min=1e-12)  # avoid div-by-zero
+
+        # compute force magnitude from −dU/dr
+        prefactor = 4 * epsilon * λ_decay * r ** (n - 1) / sigma ** n
+        force_mag = prefactor * (
+            12.0 * A ** (-12.0 / n - 1) -
+            6.0  * A ** (-6.0 / n - 1)
+        )
+
+        # unit vector r̂
+        r_hat = pair_vec / (r[..., None] + 1e-12)
+        force_pairs = -force_mag[..., None] * r_hat            # −∇U_sc
+        # # get r value corresponding to max force_mag
+        # max_force_idx = torch.argmax(force_mag)
+        # r_at_max_force = r.flatten()[max_force_idx]
+        # print("r at max force magnitude:", r_at_max_force.item())
+        # exit()
+        # zero out self-interaction
+        force_pairs = force_pairs.masked_fill(diag_mask.unsqueeze(-1), 0.0)
+
+        # sum over j to get net force on i
+        total_force = torch.sum(force_pairs, dim=2)            # (B,N,D)
+
+        # optional harmonic confinement
+        if (not self.periodic) and (not turn_off_harmonic):
+            total_force += self.harmonic_force(particle_pos)
+
+        return total_force
+
+
+
+
+
+def wrapped_normal_logpdf(x, mu, sigma, L, K=3):
+    # ensure sigma and L are tensors that live with x
+    sigma = torch.as_tensor(sigma, dtype=x.dtype, device=x.device)
+    L     = torch.as_tensor(L,     dtype=x.dtype, device=x.device)
+
+    # broadcast everything to the same shape
+    x, mu, sigma, L = torch.broadcast_tensors(x, mu, sigma, L)
+    ks = torch.arange(-K, K + 1, dtype=x.dtype, device=x.device)     # (2K+1,)
+
+    shifted = x.unsqueeze(-1) + ks * L.unsqueeze(-1)                 # (...,D,2K+1)
+
+    log_gauss = (
+        -0.5 * ((shifted - mu.unsqueeze(-1)) / sigma.unsqueeze(-1))**2
+        - torch.log(sigma.unsqueeze(-1))
+        - 0.5 * torch.log(torch.tensor(2 * torch.pi, dtype=x.dtype, device=x.device))
+    )
+
+    logp = torch.logsumexp(log_gauss, dim=-1) - torch.log(L)         # (...,D)
+    return logp
+
+def wrapped_normal_logpdf_neighbors(x, mu, sigma, L, K=3, offsets=None):
+    """
+    offsets : # (nboffset, D)
+    """
+
+    if offsets is None:
+        return wrapped_normal_logpdf(x, mu, sigma, L, K)
+    else:
+    # ensure sigma and L are tensors that live with x
+        sigma = torch.as_tensor(sigma, dtype=x.dtype, device=x.device)
+        L     = torch.as_tensor(L,     dtype=x.dtype, device=x.device)
+
+
+
+        newmu = mu.unsqueeze(1).expand(-1, offsets.shape[0], -1, -1)
+        newmu = newmu + offsets.reshape(1, offsets.shape[0], 1, -1).to(mu)
+        newmu = newmu % L  # wrap the means to the box # (B, O ,P,D)
+
+        newx = x.unsqueeze(1).expand(-1, newmu.shape[1], -1, -1)  # (B, O ,P,D)
+
+        # print(newx.shape, newmu.shape, sigma.shape, L.shape)
+        # broadcast everything to the same shape
+        newx, newmu, sigma, L = torch.broadcast_tensors(newx, newmu, sigma, L)
+        ks = torch.arange(-K, K + 1, dtype=x.dtype, device=x.device)     # (2K+1,)
+
+
+        newshifted = newx.unsqueeze(-1) + ks * L.unsqueeze(-1)        # (B, O ,P,D, 2K+1)
+
+
+        newlog_gauss = (
+            -0.5 * ((newshifted - newmu.unsqueeze(-1)) / sigma.unsqueeze(-1))**2
+            - torch.log(sigma.unsqueeze(-1))
+            - 0.5 * torch.log(torch.tensor(2 * torch.pi, dtype=x.dtype, device=x.device))
+        )
+
+        newlogp = torch.logsumexp(newlog_gauss, dim=-1) - torch.log(L)         # (B, O ,P , D)
+        return newlogp

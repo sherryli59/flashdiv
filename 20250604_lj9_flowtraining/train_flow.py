@@ -8,10 +8,11 @@ from flashdiv.flows.egnn import EGNN_dynamics
 from flashdiv.flows.architectures import FlowNet,  VelocityBlock,VelocityFlowLJ
 from flashdiv.flows.trainer import FlowTrainer
 from flashdiv.flows.eqtf import EqTransformerFlowLJ
+from flashdiv.flows.eqtf_inv import EqTransformerFlowLJInv
 
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader, Dataset, random_split
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,10 +48,10 @@ args_as_str = args_to_str(args)
 # load samples
 
 temp = float(args.temp)
-nbparticles = 9
-dim = 2
+nbparticles = 13
+dim = 3
 
-fname = f'lj9_2d_{temp}'
+fname = f'lj{nbparticles}_{dim}d_{temp}'
 lj = torch.tensor(np.load(f'{fname}.npy'))
 #lj = (rearrange(lj, 'steps batch part dim -> (steps batch) part dim')) % boxlength - boxlength / 2 # center the data
 
@@ -102,14 +103,33 @@ if args.nn == 'egnn':
             agg="sum",
         )
 elif args.nn == 'eqtf':
-    velocitynet = EqTransformerFlowLJ(input_dim=2)
+    velocitynet = EqTransformerFlowLJ(input_dim=2,embed_dim=256)
 elif args.nn == 'mlp':
     velocitynet = VelocityFlowLJ()
-
+elif args.nn == 'eqtf_inv':
+    velocitynet = EqTransformerFlowLJInv(input_dim=2,embed_dim=256)
 velocitynet.to(device)
 velocitytrainer = FlowTrainer(velocitynet, learning_rate=lr)
 
 # train and save in right spot
+
+
+# Callbacks
+early_stop_callback = EarlyStopping(
+    monitor="val_loss",
+    patience=10,
+    mode="min",
+    verbose=True
+)
+
+checkpoint_callback = ModelCheckpoint(
+    save_top_k=10,         
+    monitor="val_loss",
+    mode="min",             
+    every_n_epochs=1,                
+    filename="epoch={epoch}-val_loss={val_loss:.4f}",
+    save_weights_only=False
+)
 
 
 nb_epochs = int(args.nb_epochs)
@@ -120,6 +140,7 @@ trainer = Trainer(
     accelerator="gpu" if torch.cuda.is_available() else "cpu",
     default_root_dir=f'flow_model_{args_as_str}',
     enable_progress_bar = False,
+    callbacks=[early_stop_callback, checkpoint_callback],
     )
 
 trainer.fit(velocitytrainer, train_loader, val_loader)
