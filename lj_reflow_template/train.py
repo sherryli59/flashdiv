@@ -201,17 +201,24 @@ ljsystem= LJ(
 
 
 batch_size = args.batch_size
-nbsamples = min(int(1e6), get_frame_count(args.data_path))
-# Open HDF5 file and read shape
 if args.reflow:
-    rd_data = None
-    dataset_name = 'xt'
+    # For reflow training we load the pre-generated samples directly
+    # from a torch serialized file. This keeps the data in memory and
+    # avoids the per-sample HDF5 reads that made the original
+    # ``train.py --reflow`` path slower than ``train_reflow.py``.
+    reflow = torch.load(args.data_path)
+    x0 = reflow['x0']
+    xt = reflow['xt']
+    dataset = torch.utils.data.TensorDataset(x0, xt)
+    nbsamples = len(dataset)
 else:
+    # Standard training uses the raw trajectory data stored in an HDF5
+    # file and generates source samples on the fly.
+    nbsamples = min(int(1e6), get_frame_count(args.data_path))
     rd_data = generate_source_data(ljsystem, n_samples=nbsamples)
-    dataset_name = 'trajectory'
-
-# Create HDF5-backed dataset
-dataset = H5Dataset(args.data_path, dataset_name=dataset_name, rd_data=rd_data, n_samples=nbsamples)
+    dataset = H5Dataset(
+        args.data_path, dataset_name='trajectory', rd_data=rd_data, n_samples=nbsamples
+    )
 
 # Split train/val
 train_size = int(0.9 * len(dataset))
