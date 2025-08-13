@@ -176,7 +176,7 @@ parser.add_argument('--nb_epochs', type=int, default=30, help='Number of epochs'
 parser.add_argument('--init', type=str, default='uniform', help='Initialization method: normal, uniform')
 parser.add_argument('--nn', type=str, default='egnn', help='Neural network type: egnn, egnn_noe, egnn_lj')
 parser.add_argument('--reflow', action='store_true', help='Use reflow data')
-parser.add_argument('--data_path', type=str, default='lj.h5', help='Path to reflow data')
+parser.add_argument('--data_path', type=str, default='../lj.h5', help='Path to reflow data')
 parser.add_argument('--ckpt_dir', type=str, default=None)  # optional override
 parser.add_argument('--nparticles', type=int, default=16)
 parser.add_argument('--kT', type=float, default=1.0)
