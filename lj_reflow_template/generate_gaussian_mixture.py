@@ -33,17 +33,16 @@ def sample_mixture(n_samples: int, npoints: int, boxlength: float, n_peaks: int,
 def main():
     parser = argparse.ArgumentParser(description="Generate 2D Gaussian mixture samples")
     parser.add_argument("out", type=str, help="Output HDF5 file path")
-    parser.add_argument("--n_samples", type=int, default=10000, help="Number of samples to generate")
+    parser.add_argument("--n_samples", type=int, default=100000, help="Number of samples to generate")
     parser.add_argument("--npoints", type=int, default=16, help="Number of points per sample")
     parser.add_argument("--boxlength", type=float, default=1.0, help="Box length for PBC")
     parser.add_argument("--n_peaks", type=int, default=4, help="Number of Gaussian peaks")
-    parser.add_argument("--sigma", type=float, default=0.05, help="Standard deviation of Gaussians")
+    parser.add_argument("--sigma", type=float, default=0.2, help="Standard deviation of Gaussians")
     args = parser.parse_args()
 
     data = sample_mixture(args.n_samples, args.npoints, args.boxlength, args.n_peaks, args.sigma)
     with h5py.File(args.out, "w") as f:
         f.create_dataset("trajectory", data=data.numpy())
-        f.create_dataset("x0", data=data.numpy())
 
 if __name__ == "__main__":
     main()
