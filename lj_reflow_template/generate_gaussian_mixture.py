@@ -59,7 +59,7 @@ def main() -> None:
         "--dim", type=int, default=16, help="Dimensionality of each sample"
     )
     parser.add_argument(
-        "--n_peaks", type=int, default=20, help="Number of Gaussian peaks"
+        "--n_peaks", type=int, default=10, help="Number of Gaussian peaks"
     )
     parser.add_argument(
         "--sigma", type=float, default=0.1, help="Standard deviation of Gaussians"
