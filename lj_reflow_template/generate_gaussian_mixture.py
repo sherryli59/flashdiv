@@ -20,12 +20,12 @@ def sample_mixture(
 
     Args:
         n_samples: Number of samples to draw.
-        dim: Dimensionality of each sample.
+        dim: Number of 1D points in each sample.
         n_peaks: Number of mixture components to sample.
         sigma: Standard deviation of each Gaussian component.
 
     Returns:
-        Tensor of shape ``(n_samples, dim)`` containing the generated samples.
+        Tensor of shape ``(n_samples, dim, 1)`` containing the generated samples.
     """
 
     # Enumerate all possible means located at ±0.25 in each dimension
@@ -44,7 +44,7 @@ def sample_mixture(
     peak_idx = torch.randint(0, n_peaks, (n_samples,))
     selected_means = means[peak_idx]
     samples = torch.randn(n_samples, dim) * sigma + selected_means
-    return samples
+    return samples.unsqueeze(-1)
 
 
 def main() -> None:
