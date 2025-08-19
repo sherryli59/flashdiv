@@ -9,6 +9,7 @@ from pytorch_lightning import seed_everything
 from flashdiv.flows.egnn_cutoff import EGNN_dynamicsPeriodic
 from flashdiv.flows.egnn_periodic import EGNN_dynamicsPeriodic as EGNN_dynamicsPeriodic_noe
 from flashdiv.flows.transformer import Transformer
+from flashdiv.flows.transformer_variant import TransformerVariant
 from flashdiv.flows.trainer import FlowTrainerTorus
 from flashdiv.flows.mlp import MLP
 from flashdiv.lj.lj import LJ
@@ -24,7 +25,12 @@ def args_to_str(args, ignore=("ckpt_dir", "ckpt_name", "nparticles", "dim", "kT"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate reflow or final data")
-    parser.add_argument('--nn', type=str, default='egnn')
+    parser.add_argument(
+        '--nn',
+        type=str,
+        default='egnn',
+        help='Network type: egnn, egnn_noe, mlp, transformer, transformer_var'
+    )
     parser.add_argument('--ckpt_dir', type=str, required=True,
                         help='Path to model checkpoint')
     parser.add_argument('--nparticles', type=int, default=16)
@@ -104,6 +110,8 @@ def load_model(args):
         net = MLP(dim=input_dim, hidden_dim=hidden_nf, num_layers=nlayers).to(device)
     elif args.nn == 'transformer':
         net = Transformer(d_input=ljsystem.dim, d_output=ljsystem.dim)
+    elif args.nn == 'transformer_var':
+        net = TransformerVariant(seq_length=ljsystem.nparticles)
     trainer = FlowTrainerTorus.load_from_checkpoint(args.ckpt_dir, flow_model=net, strict=False)
 
     return trainer.flow_model.eval(), ljsystem

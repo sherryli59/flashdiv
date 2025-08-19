@@ -23,10 +23,11 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerVariant(FlowNet):
-    """Transformer tailored for inputs with shape ``[batch_size, dim]``.
+    """Transformer tailored for inputs shaped ``[batch_size, n_tokens, 1]``.
 
-    Each dimension is treated as a token. Positional encodings break the
-    permutational symmetry among dimensions.
+    Each scalar token is processed independently before attention mixes
+    information across tokens. Positional encodings break the permutational
+    symmetry among them.
     """
 
     def __init__(
@@ -71,8 +72,7 @@ class TransformerVariant(FlowNet):
         mask: torch.Tensor | None = None,
         return_attns: bool = False,
     ):
-        # reshape to (batch, seq_length, 1)
-        x = x.unsqueeze(-1)
+        # ``x`` is already shaped as (batch, seq_length, 1)
         x = self.affine_in(x)
         x = self.pos_encoding(x)
         x = self.dropout(x)
@@ -90,7 +90,7 @@ class TransformerVariant(FlowNet):
             if return_attns:
                 enc_slf_attn_list.append(enc_slf_attn)
 
-        x = self.affine_out(x).squeeze(-1)
+        x = self.affine_out(x)
         if return_attns:
             return x, enc_slf_attn_list
         return x
