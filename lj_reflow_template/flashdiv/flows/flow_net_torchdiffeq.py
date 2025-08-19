@@ -15,7 +15,7 @@ class FlowNet(nn.Module):
         raise NotImplementedError("Override this method in subclasses")
 
     @torch.no_grad()
-    def divergence_hutch(self, x,t, div_samples=int(1e3), **kwargs):
+    def divergence_hutch(self, x,t, div_samples=int(1e2 ), **kwargs):
         """
         hutchison trace estimator
         """
@@ -116,7 +116,7 @@ class FlowNet(nn.Module):
 
             # this is an inplace modification of xs
             def mod(xs):
-                xs%=boxlength
+                xs = (xs + 0.5 * boxlength) % boxlength - 0.5 * boxlength
 
             setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs)) # this is an inplace operation on xs, which we carry on throught the next integration step
 
@@ -227,7 +227,7 @@ class FlowNet(nn.Module):
         # optional: box wrapping per step
         if boxlength is not None:
             def mod(xs):
-                xs[:batch_size] %= boxlength
+                xs[:batch_size]  = (xs[:batch_size] + 0.5 * boxlength) % boxlength - 0.5 * boxlength
             setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
 
         integrated_state = odeint(integration_func, state0, times, **kwargs)

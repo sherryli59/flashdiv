@@ -8,14 +8,16 @@ from pytorch_lightning import seed_everything
 
 from flashdiv.flows.egnn_cutoff import EGNN_dynamicsPeriodic
 from flashdiv.flows.egnn_periodic import EGNN_dynamicsPeriodic as EGNN_dynamicsPeriodic_noe
+from flashdiv.flows.transformer import Transformer
 from flashdiv.flows.trainer import FlowTrainerTorus
+from flashdiv.flows.mlp import MLP
 from flashdiv.lj.lj import LJ
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def args_to_str(args, ignore=("ckpt_dir", "ckpt_name", "nparticles", "dim", "kT")):
+def args_to_str(args, ignore=("ckpt_dir", "ckpt_name", "nparticles", "dim", "kT","prefix","batch_size", "n_iterations", "init", "mode", "reflow_data", "save_path")):
     """Compact string representation of arguments for folder names."""
     return "_".join([f"{k}_{v}" for k, v in vars(args).items() if k not in ignore])
 
@@ -39,12 +41,19 @@ def parse_args():
                         help='Existing reflow data (required for mode=final)')
     parser.add_argument('--save_path', type=str, default=None,
                         help='Where to store the generated data')
+    parser.add_argument('--prefix', type=str, default='flow_model', help='Prefix for output files')
+    parser.add_argument('--boxlength', type=float, default=0.0,
+                        help='Box length for LJ system (0.0 means auto-calculate)')
+    parser.add_argument('--prob', action='store_true', help='Whether to compute log probabilities')
     return parser.parse_args()
 
 
 def load_model(args):
     """Load a trained flow model and the associated LJ system."""
-    boxlength = args.nparticles ** (1 / args.dim)
+    if args.boxlength <= 0.0:
+        boxlength = args.nparticles ** (1 / args.dim)
+    else:
+        boxlength = args.boxlength
     ljsystem = LJ(
         nparticles=args.nparticles,
         dim=args.dim,
@@ -71,7 +80,7 @@ def load_model(args):
             tanh=True,
             attention=True,
             agg='sum')
-    else:
+    elif args.nn == 'egnn':
         net = EGNN_dynamicsPeriodic(
             n_particles=ljsystem.nparticles - 1,
             n_dimension=args.dim,
@@ -90,11 +99,17 @@ def load_model(args):
             boxlength=ljsystem.boxlength,
             max_neighbors=max_neighbors,
         )
+    elif args.nn == 'mlp':
+        input_dim = ljsystem.nparticles * ljsystem.dim
+        net = MLP(dim=input_dim, hidden_dim=hidden_nf, num_layers=nlayers).to(device)
+    elif args.nn == 'transformer':
+        net = Transformer(d_input=ljsystem.dim, d_output=ljsystem.dim)
     trainer = FlowTrainerTorus.load_from_checkpoint(args.ckpt_dir, flow_model=net, strict=False)
+
     return trainer.flow_model.eval(), ljsystem
 
 
-def generate_samples(model, ljsystem, batch_size, n_iterations, init='uniform', x0_data=None):
+def generate_samples(model, ljsystem, batch_size, n_iterations, init='uniform', x0_data=None, prob=True):
     """Generate samples from the model.
 
     If ``x0_data`` is provided the model starts from these initial positions,
@@ -117,24 +132,39 @@ def generate_samples(model, ljsystem, batch_size, n_iterations, init='uniform', 
             x0 = x0_data[start:end].to(device)
             log_prob0 = torch.zeros(x0.shape[0], device=device)
         with torch.no_grad():
-            xt_, log_prob_ = model.sample_logprob(
-                x0,
-                log_prob0,
-                times,
-                method='rk4',
-                options={'step_size': 1 / 100},
-            )
+            if prob:
+                xt_, log_prob_ = model.sample_logprob(
+                    x0,
+                    log_prob0,
+                    times,
+                    method='rk4',
+                    div_method="direct_trace",
+                    boxlength=ljsystem.boxlength if ljsystem.boxlength > 0 else None,
+                    options={'step_size': 1 / 100},
+                )
+            else:
+                xt_= model.sample(
+                    x0,
+                    times,
+                    method='rk4',
+                    boxlength=ljsystem.boxlength if ljsystem.boxlength > 0 else None,
+                    options={'step_size': 1 / 100},
+                )
             traj_ = xt_
             xt_ = xt_[-1]
         xt_list.append(xt_.detach())
         x0_list.append(x0.detach())
         traj_list.append(traj_.detach())
-        log_prob_list.append(log_prob_[-1].detach())
+        if prob:
+            log_prob_list.append(log_prob_[-1].detach())
     xt = rearrange(xt_list, 'l b p d -> (l b) p d')
     x0_list = rearrange(x0_list, 'l b p d -> (l b) p d')
     traj_list = rearrange(traj_list, 'l t b p d -> (l b) t p d')
-    log_prob_list = rearrange(log_prob_list, 'l b -> (l b)')
-    return xt, x0_list, log_prob_list, traj_list
+    if prob:
+        log_prob_list = rearrange(log_prob_list, 'l b -> (l b)')
+        return xt, x0_list, log_prob_list, traj_list
+    else:
+        return xt, x0_list, None, traj_list
 
 
 def main():
@@ -147,22 +177,29 @@ def main():
         x0_ref = reflow['x0']
         n_iters = math.ceil(x0_ref.shape[0] / args.batch_size)
         xt, x0_list, log_prob_list, traj_list = generate_samples(
-            model, ljsystem, args.batch_size, n_iters, x0_data=x0_ref
+            model, ljsystem, args.batch_size, n_iters, x0_data=x0_ref, prob=args.prob
         )
         default_name = 'final_data.pt'
     else:
         xt, x0_list, log_prob_list, traj_list = generate_samples(
-            model, ljsystem, args.batch_size, args.n_iterations, init=args.init
+            model, ljsystem, args.batch_size, args.n_iterations, init=args.init, prob=args.prob
         )
         default_name = 'reflow_data.pt'
-    results = {
-        'xt': xt,
-        'x0': x0_list,
-        'log_prob': log_prob_list,
-        'traj': traj_list,
-    }
+    if args.prob:
+        results = {
+            'xt': xt,
+            'x0': x0_list,
+            'log_prob': log_prob_list,
+            'traj': traj_list,
+        }
+    else:
+        results = {
+            'xt': xt,
+            'x0': x0_list,
+            'traj': traj_list,
+        }
     if args.save_path is None:
-        model_dir = f"flow_model_{args_to_str(args)}"
+        model_dir = f"{args.prefix}_{args_to_str(args)}"
         os.makedirs(model_dir, exist_ok=True)
         save_path = os.path.join(model_dir, default_name)
     else:

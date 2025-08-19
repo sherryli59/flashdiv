@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from flashdiv.flows.flow_net_torchdiffeq import FlowNet
+
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
@@ -238,7 +240,7 @@ class TimestepEmbedder(nn.Module):
         t_emb = self.mlp(t_freq)
         return t_emb
     
-class Transformer(nn.Module):
+class Transformer(FlowNet):
     ''' A encoder model with self attention mechanism. '''
 
     def __init__(

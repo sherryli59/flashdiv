@@ -7,7 +7,7 @@ from einops import rearrange, repeat, reduce
 from flashdiv.flows.egnn_cutoff import EGNN_dynamics, EGNN_dynamicsPeriodic
 from flashdiv.flows.egnn_periodic import EGNN_dynamicsPeriodic as EGNN_dynamicsPeriodic_noe
 from flashdiv.flows.mlp import MLP
-
+from flashdiv.flows.transformer import Transformer
 from flashdiv.flows.flow_net_torchdiffeq import FlowNet
 # from flashdiv.flows.message_passing import
 from flashdiv.flows.trainer import FlowTrainer, FlowTrainerTorus
@@ -24,9 +24,6 @@ import h5py
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 
-import torch
-from torch.utils.data import Dataset
-import h5py
 
 class H5Dataset(Dataset):
     def __init__(self, path, rd_data=None, dataset_name="xt", rd_key="x0", n_samples=None):
@@ -67,7 +64,7 @@ def generate_source_data(ljsystem, n_samples=int(1e7), std=0.5):
     rd_data = rd_data_[idx, perm, :]
     return rd_data
 
-def args_to_str(args, ignore=("resume_dir", "data_path","ckpt_dir", "nparticles", "dim", "kT")):
+def args_to_str(args, ignore=("resume_dir", "data_path","ckpt_dir", "nparticles", "dim", "kT","prefix")):
     """
     Turn the argparse.Namespace into a compact string for the run-folder,
     but *exclude* any keys listed in `ignore`.
@@ -132,9 +129,13 @@ def train_model():
     elif args.nn == 'mlp':
         input_dim = ljsystem.nparticles * ljsystem.dim
         velocitynet = MLP(dim=input_dim, hidden_dim=hidden_nf, num_layers=nlayers).to(device)
+    elif args.nn == 'transformer':
+        velocitynet = Transformer(d_input=ljsystem.dim,d_output=ljsystem.dim)
+        
     velocitytrainer = FlowTrainerTorus(velocitynet, learning_rate=lr, sigma=0.001, boxlength=ljsystem.boxlength)
+
     ckpt_cb = ModelCheckpoint(
-    dirpath=f"flow_model_{args_as_str}/checkpoints",
+    dirpath=f"{args.prefix}_{args_as_str}/checkpoints",
     filename="epoch={epoch}-step={step}",
     save_last=True,         # → writes .../checkpoints/last.ckpt
     save_top_k=1,           # keep best model too
@@ -144,7 +145,7 @@ def train_model():
     trainer = Trainer(
         max_epochs=args.nb_epochs,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        default_root_dir=f'flow_model_{args_as_str}',
+        default_root_dir=f'{args.prefix}_{args_as_str}',
         callbacks=[ckpt_cb],
         enable_progress_bar = True,
     )
@@ -180,16 +181,21 @@ parser.add_argument('--nb_epochs', type=int, default=30, help='Number of epochs'
 parser.add_argument('--init', type=str, default='uniform', help='Initialization method: normal, uniform')
 parser.add_argument('--nn', type=str, default='egnn', help='Neural network type: egnn, egnn_noe, egnn_lj, mlp')
 parser.add_argument('--reflow', action='store_true', help='Use reflow data')
+parser.add_argument('--prefix', type=str, default='flow_model', help='Prefix for output files')
 parser.add_argument('--data_path', type=str, default='../lj.h5', help='Path to reflow data')
 parser.add_argument('--ckpt_dir', type=str, default=None)  # optional override
 parser.add_argument('--nparticles', type=int, default=16)
 parser.add_argument('--kT', type=float, default=1.0)
+parser.add_argument('--boxlength', type=float, default=0.0)
 parser.add_argument('--dim', type=int, default=2)
+
+
 args = parser.parse_args()
 args_as_str = args_to_str(args)
 seed_everything(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+if args.boxlength <= 0.0:
+    args.boxlength = args.nparticles ** (1 / args.dim)
 
 nparticles = args.nparticles
 dim = args.dim
@@ -197,7 +203,7 @@ ljsystem= LJ(
   nparticles=nparticles,
   dim=dim,
   device='cuda',
-  boxlength= nparticles ** (1 / dim),
+  boxlength= args.boxlength,
   sigma=2 ** (-1 / 6),
   kT=args.kT,
   periodic=True

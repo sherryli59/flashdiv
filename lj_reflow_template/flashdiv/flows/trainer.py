@@ -142,7 +142,7 @@ class FlowTrainerTorus(LightningModule):
 
         tr = t.view(-1, 1, 1)
         xt = base + tr * vtorus + self.sigma * torch.randn_like(base)
-        xt = xt % self.boxlength
+        xt = (xt + 0.5 * self.boxlength) % self.boxlength - 0.5 * self.boxlength
 
         vt = self.flow_model(xt, t)
 
@@ -204,7 +204,7 @@ class FlowTrainerTorus(LightningModule):
 
         tr = t.view(-1, 1, 1)
         xt = base + tr * vtorus + self.sigma * torch.randn_like(base)
-        xt = xt % self.boxlength
+        xt = (xt + 0.5 * self.boxlength) % self.boxlength - 0.5 * self.boxlength
 
         vt = self.flow_model(xt, t)
 

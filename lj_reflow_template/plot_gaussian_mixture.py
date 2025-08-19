@@ -27,9 +27,10 @@ def main():
     points = traj.reshape(-1, 2)
 
     plt.figure()
-    plt.scatter(points[:, 0], points[:, 1], s=1, alpha=0.5)
-    plt.xlabel("x")
-    plt.ylabel("y")
+    #plt.scatter(points[:, 0], points[:, 1], s=1, alpha=0.5)
+    plt.hist(points[:, 0], bins=100, density=True, alpha=0.5, label='x-coordinates')
+    # plt.xlabel("x")
+    # plt.ylabel("y")
     plt.title("Gaussian mixture sample distribution")
 
     if args.show:
