@@ -131,6 +131,8 @@ def train_model():
         velocitynet = MLP(dim=input_dim, hidden_dim=hidden_nf, num_layers=nlayers).to(device)
     elif args.nn == 'transformer':
         velocitynet = Transformer(d_input=ljsystem.dim,d_output=ljsystem.dim)
+    elif args.nn == 'transformer_var':
+        velocitynet = TransformerVariant(seq_length=ljsystem.nparticles)
         
     velocitytrainer = FlowTrainerTorus(velocitynet, learning_rate=lr, sigma=0.001, boxlength=ljsystem.boxlength)
 
