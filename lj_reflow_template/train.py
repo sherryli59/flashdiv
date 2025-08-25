@@ -144,6 +144,7 @@ def train_model():
         ml_weight=args.ml_weight,
         div_method=args.div_method,
         div_samples=args.div_samples,
+        target_distribution=ljsystem,
     )
 
     ckpt_cb = ModelCheckpoint(
