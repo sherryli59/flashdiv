@@ -5,11 +5,13 @@ from pytorch_lightning import LightningModule
 from einops import repeat, rearrange, reduce
 import torch.nn.functional as F
 import time
+from flashdiv.lj.utils import compute_normalized_ess
 
 class FlowTrainer(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3, permute=False, sigma = 0,
                  cfm_weight: float = 1.0, ml_weight: float = 0.0,
-                 div_method: str = 'full_jacobian', div_samples: int = 1):
+                 div_method: str = 'full_jacobian', div_samples: int = 1,
+                 target_distribution=None):
         super().__init__()
         self.flow_model = flow_model
         self.learning_rate = learning_rate
@@ -19,7 +21,8 @@ class FlowTrainer(LightningModule):
         self.ml_weight = ml_weight
         self.div_method = div_method
         self.div_samples = div_samples
-        self.save_hyperparameters()
+        self.target_distribution = target_distribution
+        self.save_hyperparameters(ignore=["target_distribution"])
 
     def permute_batch(self, batch):
 
@@ -70,9 +73,12 @@ class FlowTrainer(LightningModule):
                                               div_samples=self.div_samples, boxlength=None)
             ml_loss = -logp.mean()
             with torch.no_grad():
-                w = torch.exp(logp - logp.max())
-                w = w / w.sum()
-                ess = 1.0 / (w.pow(2).sum())
+                if self.target_distribution is not None:
+                    ess, _ = compute_normalized_ess(target, logp, self.target_distribution)
+                else:
+                    w = torch.exp(logp - logp.max())
+                    w = w / w.sum()
+                    ess = (1.0 / (w.pow(2).sum())) / w.shape[0]
                 ess_time = ess / (time.time() - start + 1e-8)
                 self.log('train_ess', ess, on_step=True, on_epoch=True)
                 self.log('train_ess_time', ess_time, on_step=True, on_epoch=True)
@@ -115,9 +121,12 @@ class FlowTrainer(LightningModule):
                                               div_samples=self.div_samples, boxlength=None)
             ml_loss = -logp.mean()
             with torch.no_grad():
-                w = torch.exp(logp - logp.max())
-                w = w / w.sum()
-                ess = 1.0 / (w.pow(2).sum())
+                if self.target_distribution is not None:
+                    ess, _ = compute_normalized_ess(target, logp, self.target_distribution)
+                else:
+                    w = torch.exp(logp - logp.max())
+                    w = w / w.sum()
+                    ess = (1.0 / (w.pow(2).sum())) / w.shape[0]
                 ess_time = ess / (time.time() - start + 1e-8)
                 self.log('val_ess', ess, on_step=False, on_epoch=True)
                 self.log('val_ess_time', ess_time, on_step=False, on_epoch=True)
@@ -137,7 +146,8 @@ class FlowTrainer(LightningModule):
 class FlowTrainerTorus(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3, permute=False, sigma = 0, boxlength=None,
                  cfm_weight: float = 1.0, ml_weight: float = 0.0,
-                 div_method: str = 'full_jacobian', div_samples: int = 1):
+                 div_method: str = 'full_jacobian', div_samples: int = 1,
+                 target_distribution=None):
         super().__init__()
         self.flow_model = flow_model
         self.learning_rate = learning_rate
@@ -148,7 +158,8 @@ class FlowTrainerTorus(LightningModule):
         self.ml_weight = ml_weight
         self.div_method = div_method
         self.div_samples = div_samples
-        self.save_hyperparameters()
+        self.target_distribution = target_distribution
+        self.save_hyperparameters(ignore=["target_distribution"])
 
     def permute_batch(self, batch):
 
@@ -212,9 +223,12 @@ class FlowTrainerTorus(LightningModule):
                                               div_samples=self.div_samples)
             ml_loss = -logp.mean()
             with torch.no_grad():
-                w = torch.exp(logp - logp.max())
-                w = w / w.sum()
-                ess = 1.0 / (w.pow(2).sum())
+                if self.target_distribution is not None:
+                    ess, _ = compute_normalized_ess(target, logp, self.target_distribution)
+                else:
+                    w = torch.exp(logp - logp.max())
+                    w = w / w.sum()
+                    ess = (1.0 / (w.pow(2).sum())) / w.shape[0]
                 ess_time = ess / (time.time() - start + 1e-8)
                 self.log('train_ess', ess, on_step=True, on_epoch=True)
                 self.log('train_ess_time', ess_time, on_step=True, on_epoch=True)
@@ -290,9 +304,12 @@ class FlowTrainerTorus(LightningModule):
                                               div_samples=self.div_samples)
             ml_loss = -logp.mean()
             with torch.no_grad():
-                w = torch.exp(logp - logp.max())
-                w = w / w.sum()
-                ess = 1.0 / (w.pow(2).sum())
+                if self.target_distribution is not None:
+                    ess, _ = compute_normalized_ess(target, logp, self.target_distribution)
+                else:
+                    w = torch.exp(logp - logp.max())
+                    w = w / w.sum()
+                    ess = (1.0 / (w.pow(2).sum())) / w.shape[0]
                 ess_time = ess / (time.time() - start + 1e-8)
                 self.log('val_ess', ess, on_step=False, on_epoch=True)
                 self.log('val_ess_time', ess_time, on_step=False, on_epoch=True)

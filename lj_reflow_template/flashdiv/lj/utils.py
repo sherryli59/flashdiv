@@ -147,3 +147,33 @@ def com_logprob(x):
     dist = multivariate_normal(cov=singular_cov , allow_singular=True)
 
     return dist.logpdf(x.view(-1, nbparticles * dim))
+
+
+def compute_normalized_ess(samples, log_q, ljsystem):
+    """Compute normalized effective sample size (ESS).
+
+    Parameters
+    ----------
+    samples : torch.Tensor
+        Samples drawn from the generative model with shape ``[batch, N, D]``.
+    log_q : torch.Tensor
+        Log probabilities of the samples under the generative model with
+        shape ``[batch]``.
+    ljsystem : object
+        Target distribution providing ``potential`` and ``kT`` attributes.
+
+    Returns
+    -------
+    Tuple[torch.Tensor, torch.Tensor]
+        ``ess_norm`` – ESS normalized by the number of samples (0–1) and the
+        corresponding normalized importance weights.
+    """
+    with torch.no_grad():
+        log_target = -ljsystem.potential(samples) / ljsystem.kT
+        log_w = log_target - log_q
+        w = torch.exp(log_w - log_w.max())
+        w = w / w.sum()
+        ess = 1.0 / (w.pow(2).sum())
+        ess_norm = ess / w.shape[0]
+    return ess_norm, w
+

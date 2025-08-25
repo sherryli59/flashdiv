@@ -112,7 +112,9 @@ def load_model(args):
         net = Transformer(d_input=ljsystem.dim, d_output=ljsystem.dim)
     elif args.nn == 'transformer_var':
         net = TransformerVariant(seq_length=ljsystem.nparticles)
-    trainer = FlowTrainerTorus.load_from_checkpoint(args.ckpt_dir, flow_model=net, strict=False)
+    trainer = FlowTrainerTorus.load_from_checkpoint(
+        args.ckpt_dir, flow_model=net, strict=False, target_distribution=ljsystem
+    )
 
     return trainer.flow_model.eval(), ljsystem
 
