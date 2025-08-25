@@ -3,7 +3,7 @@ import torch
 from einops import rearrange, repeat, reduce
 from torch.func import jvp, jacrev, vmap
 # import ode solver class
-from torchdiffeq import odeint
+from torchdiffeq import odeint, odeint_adjoint
 
 # base class
 class FlowNet(nn.Module):
@@ -14,7 +14,6 @@ class FlowNet(nn.Module):
     def forward(self, x, t):
         raise NotImplementedError("Override this method in subclasses")
 
-    @torch.no_grad()
     def divergence_hutch(self, x,t, div_samples=int(1e2 ), **kwargs):
         """
         hutchison trace estimator
@@ -45,7 +44,6 @@ class FlowNet(nn.Module):
 
         return tr
 
-    @torch.no_grad()
     def divergence_full_jacobian(self, x,t, **kwargs):
         """
         Computes the full jacobian and then selects the diagonal
@@ -65,7 +63,6 @@ class FlowNet(nn.Module):
             batched_jacobian
         )
 
-    @torch.no_grad()
     def direct_trace(self, x,t, **kwargs):
         """
         Computes the full jacobian and then selects the diagonal
@@ -235,3 +232,131 @@ class FlowNet(nn.Module):
         all_logprobs = integrated_state[:, batch_size:, 0, 0]
 
         return all_xs, all_logprobs
+
+    def log_prob(self, x, times=None, verbose=False, **kwargs):
+        """Compute the log-likelihood of ``x`` under the flow.
+
+        The method augments the state with a running log-density term and
+        integrates the ODE **backward** from ``t=1`` to ``t=0`` using the
+        adjoint method provided by :func:`torchdiffeq.odeint_adjoint` for
+        memory–efficient differentiation.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Data points of shape ``[batch, n_particles, dim]`` evaluated at
+            time ``t=1``.
+        times : torch.Tensor, optional
+            Optional time grid for the integration.  If ``None`` a simple
+            two point grid ``[1, 0]`` is used.
+        verbose : bool, optional
+            If ``True`` prints the divergence method being used.
+        **kwargs
+            Additional keyword arguments forwarded to the ODE solver.  This
+            includes the divergence computation options such as
+            ``div_method`` and ``div_samples``.
+
+        Returns
+        -------
+        x0 : torch.Tensor
+            The latent variables at ``t=0``.
+        log_prob : torch.Tensor
+            The log-density of the input ``x`` up to a constant determined by
+            the base distribution.
+        """
+
+        batch_size = x.shape[0]
+        npart = x.shape[-2]
+        dim = x.shape[-1]
+
+        boxlength = kwargs.pop('boxlength', None)
+
+        # ------------------------------------------------------------------
+        # Time grid for backward integration
+        # ------------------------------------------------------------------
+        if times is None:
+            times = torch.linspace(0, 1, 2, device=x.device)
+        times = torch.flip(times, dims=[0])
+
+        if 'method' not in kwargs:
+            kwargs['method'] = 'dopri5'
+        if 'options' not in kwargs:
+            kwargs['options'] = {'step_size': 1 / 100}
+
+        # ------------------------------------------------------------------
+        # Divergence selection (same logic as in ``sample_logprob``)
+        # ------------------------------------------------------------------
+        div_kwargs = {}
+        if 'div_method' in kwargs:
+            if kwargs['div_method'] == 'hutch':
+                self._divergence = self.divergence_hutch
+                if 'div_samples' in kwargs:
+                    div_kwargs['div_samples'] = kwargs.pop('div_samples')
+            elif kwargs['div_method'] == 'full_jacobian':
+                self._divergence = self.divergence_full_jacobian
+            elif kwargs['div_method'] == 'direct_trace':
+                self._divergence = self.direct_trace
+            else:
+                raise ValueError(f"Unknown divergence method: {kwargs['div_method']}")
+            del kwargs['div_method']
+        elif hasattr(self, 'divergence'):
+            self._divergence = self.divergence
+        else:
+            self._divergence = self.divergence_full_jacobian
+
+        if verbose:
+            print("Using divergence method:", self._divergence.__name__)
+
+        # ------------------------------------------------------------------
+        # Initial augmented state: concatenate positions and log-probability
+        # ------------------------------------------------------------------
+        logprob0 = torch.zeros(batch_size, device=x.device)
+        state0 = torch.cat(
+            (
+                x,
+                repeat(
+                    logprob0,
+                    'b -> b p d',
+                    p=npart,
+                    d=dim
+                )
+            ),
+            dim=0,
+        )
+
+        class IntegrationFunc(nn.Module):
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+
+            def forward(self, t, state):
+                xs = state[:batch_size]
+                t_ = torch.full((batch_size,), t.item(), device=xs.device)
+                div = self.model._divergence(xs, t_, **div_kwargs)
+                v = self.model.forward(xs, t_)
+                vel = -v
+                dlogp = div
+                return torch.cat(
+                    (
+                        vel,
+                        repeat(
+                            dlogp,
+                            'b -> b p d',
+                            p=npart,
+                            d=dim,
+                        ),
+                    ),
+                    dim=0,
+                )
+
+        integration_func = IntegrationFunc(self)
+
+        if boxlength is not None:
+            def mod(xs):
+                xs[:batch_size] = (xs[:batch_size] + 0.5 * boxlength) % boxlength - 0.5 * boxlength
+            setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
+
+        integrated_state = odeint_adjoint(integration_func, state0, times, **kwargs)
+        x0 = integrated_state[-1, :batch_size]
+        logp = integrated_state[-1, batch_size:, 0, 0]
+        return x0, logp

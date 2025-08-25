@@ -135,7 +135,16 @@ def train_model():
     elif args.nn == 'transformer_var':
         velocitynet = TransformerVariant(seq_length=ljsystem.nparticles)
         
-    velocitytrainer = FlowTrainerTorus(velocitynet, learning_rate=lr, sigma=0.001, boxlength=ljsystem.boxlength)
+    velocitytrainer = FlowTrainerTorus(
+        velocitynet,
+        learning_rate=lr,
+        sigma=0.001,
+        boxlength=ljsystem.boxlength,
+        cfm_weight=args.cfm_weight,
+        ml_weight=args.ml_weight,
+        div_method=args.div_method,
+        div_samples=args.div_samples,
+    )
 
     ckpt_cb = ModelCheckpoint(
     dirpath=f"{args.prefix}_{args_as_str}/checkpoints",
@@ -196,6 +205,12 @@ parser.add_argument('--nparticles', type=int, default=16)
 parser.add_argument('--kT', type=float, default=1.0)
 parser.add_argument('--boxlength', type=float, default=0.0)
 parser.add_argument('--dim', type=int, default=2)
+parser.add_argument('--cfm_weight', type=float, default=1.0, help='Weight for conditional flow matching loss')
+parser.add_argument('--ml_weight', type=float, default=0.0, help='Weight for maximum likelihood loss')
+parser.add_argument('--div_method', type=str, default='full_jacobian',
+                    help='Divergence computation method for log-likelihood')
+parser.add_argument('--div_samples', type=int, default=1,
+                    help='Samples for Hutchinson trace estimator if used')
 
 
 args = parser.parse_args()
