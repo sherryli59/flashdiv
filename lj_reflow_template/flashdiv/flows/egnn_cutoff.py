@@ -263,8 +263,7 @@ class EGNN_dynamicsPeriodic(FlowNet):
                 'b p p2 -> (b p p2) 1').requires_grad_(True)  # (B * P, P-1, 1)
 
             # the goal is to have the least amount of memory usage so we detach anything that is not essential.
-            t_ = t.reshape(-1,1,1).expand(-1, P,  self.max_nb_neighbors).reshape(-1,1).detach() # (B P, P-1)should be same shape as rij
-            h_final.detach()
+            t_ = t.reshape(-1,1,1).expand(-1, P,  self.max_nb_neighbors).reshape(-1,1) # (B P, P-1)should be same shape as rij
 
             pot = self.pot_model(
                 torch.cat((
@@ -272,8 +271,7 @@ class EGNN_dynamicsPeriodic(FlowNet):
                     t_,
                     h_final.reshape(-1, h_final.shape[-1])), dim=-1)).reshape(B, P, self.max_nb_neighbors, 1)
 
-            dpotdr = torch.autograd.grad(pot.sum(), rij, create_graph=False)[0].reshape(B, P, self.max_nb_neighbors, 1).detach()
-            rij.detach()  # detach to avoid memory leak
+            dpotdr = torch.autograd.grad(pot.sum(), rij, create_graph=True)[0].reshape(B, P, self.max_nb_neighbors, 1)
 
         # don't forget the chain rule here
         divergence = divergence + (

@@ -152,7 +152,8 @@ def train_model():
     save_last=True,         # → writes .../checkpoints/last.ckpt
     save_top_k=1,           # keep best model too
     monitor="val_loss",
-    mode="min"
+    mode="min",
+    every_n_train_steps=10,
     )
     trainer = Trainer(
         max_epochs=args.nb_epochs,
@@ -160,6 +161,8 @@ def train_model():
         default_root_dir=f'{args.prefix}_{args_as_str}',
         callbacks=[ckpt_cb],
         enable_progress_bar = True,
+        val_check_interval=50,
+        log_every_n_steps=1,
     )
 
     trainer.fit(velocitytrainer, train_loader, val_loader, ckpt_path=args.ckpt_dir)

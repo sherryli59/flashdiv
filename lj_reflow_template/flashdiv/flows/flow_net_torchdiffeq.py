@@ -277,17 +277,22 @@ class FlowNet(nn.Module):
         if times is None:
             times = torch.linspace(0, 1, 2, device=x.device)
         times = torch.flip(times, dims=[0])
-
         if 'method' not in kwargs:
-            kwargs['method'] = 'dopri5'
+            kwargs['method'] = 'rk4'
         if 'options' not in kwargs:
-            kwargs['options'] = {'step_size': 1 / 100}
+            kwargs['options'] = {'step_size': 1 / 40}
+        odeint_kwargs = {}
+        odeint_kwargs['method'] = kwargs.pop('method', 'rk4')
+        odeint_kwargs['options'] = kwargs.pop('options', {'step_size': 1 / 40})
+        
 
         # ------------------------------------------------------------------
         # Divergence selection (same logic as in ``sample_logprob``)
         # ------------------------------------------------------------------
         div_kwargs = {}
-        if 'div_method' in kwargs:
+        if hasattr(self, 'divergence'):
+            self._divergence = self.divergence
+        elif 'div_method' in kwargs:
             if kwargs['div_method'] == 'hutch':
                 self._divergence = self.divergence_hutch
                 if 'div_samples' in kwargs:
@@ -299,8 +304,6 @@ class FlowNet(nn.Module):
             else:
                 raise ValueError(f"Unknown divergence method: {kwargs['div_method']}")
             del kwargs['div_method']
-        elif hasattr(self, 'divergence'):
-            self._divergence = self.divergence
         else:
             self._divergence = self.divergence_full_jacobian
 
@@ -356,7 +359,7 @@ class FlowNet(nn.Module):
                 xs[:batch_size] = (xs[:batch_size] + 0.5 * boxlength) % boxlength - 0.5 * boxlength
             setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
 
-        integrated_state = odeint_adjoint(integration_func, state0, times, **kwargs)
+        integrated_state = odeint_adjoint(integration_func, state0, times, **odeint_kwargs)
         x0 = integrated_state[-1, :batch_size]
         logp = integrated_state[-1, batch_size:, 0, 0]
         return x0, logp
