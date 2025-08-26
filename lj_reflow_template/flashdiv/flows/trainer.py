@@ -23,7 +23,15 @@ class PathGrad(torch.autograd.Function):
     @staticmethod
     def backward(ctx, g):
         l, x = ctx.saved_tensors
-        grad_x = torch.autograd.grad(l, x, g, retain_graph=True)[0]
+        grad_x = torch.autograd.grad(
+            l,
+            x,
+            g,
+            retain_graph=True,
+            allow_unused=True,
+        )[0]
+        if grad_x is None:
+            grad_x = torch.zeros_like(x)
         return None, grad_x
 
 class FlowTrainer(LightningModule):
