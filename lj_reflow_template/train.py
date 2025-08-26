@@ -165,8 +165,23 @@ def train_model():
         val_check_interval=50,
         log_every_n_steps=1,
     )
+    if args.ckpt_dir is not None:
+        print(f"Resuming from checkpoint: {args.ckpt_dir}")
+        velocitytrainer = FlowTrainerTorus.load_from_checkpoint(
+            args.ckpt_dir,
+            strict=False,
+            flow_model=velocitynet,
+            learning_rate=lr,
+            sigma=0.001,
+            boxlength=ljsystem.boxlength,
+            cfm_weight=args.cfm_weight,
+            ml_weight=args.ml_weight,
+            div_method=args.div_method,
+            div_samples=args.div_samples,
+            target_distribution=ljsystem,
+        )
 
-    trainer.fit(velocitytrainer, train_loader, val_loader, ckpt_path=args.ckpt_dir)
+    trainer.fit(velocitytrainer, train_loader, val_loader)
     return velocitynet
 
 
@@ -211,7 +226,7 @@ parser.add_argument('--boxlength', type=float, default=0.0)
 parser.add_argument('--dim', type=int, default=2)
 parser.add_argument('--cfm_weight', type=float, default=1.0, help='Weight for conditional flow matching loss')
 parser.add_argument('--ml_weight', type=float, default=0.0, help='Weight for maximum likelihood loss')
-parser.add_argument('--div_method', type=str, default='full_jacobian',
+parser.add_argument('--div_method', type=str, default='direct_trace',
                     help='Divergence computation method for log-likelihood')
 parser.add_argument('--div_samples', type=int, default=1,
                     help='Samples for Hutchinson trace estimator if used')
@@ -258,7 +273,7 @@ else:
     )
 
 # Split train/val
-train_size = int(0.9 * len(dataset))
+train_size = int(0.99 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
