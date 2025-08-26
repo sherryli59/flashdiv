@@ -160,9 +160,13 @@ class FlowNet(nn.Module):
             times = torch.flip(times, dims=[0])
 
         if 'method' not in kwargs:
-            kwargs['method'] = 'euler'
+            kwargs['method'] = 'rk4'
         if 'options' not in kwargs:
-            kwargs['options'] = {'step_size': 1 / 100}
+            kwargs['options'] = {'step_size': 1 / 40}
+
+        odeint_kwargs = {}
+        odeint_kwargs['method'] = kwargs.pop('method', 'rk4')
+        odeint_kwargs['options'] = kwargs.pop('options', {'step_size': 1 / 40})
 
         # divergence method selection
         div_kwargs = {}
@@ -247,10 +251,10 @@ class FlowNet(nn.Module):
             setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
 
         if differentiable:
-            integrated_state = odeint(integration_func, state0, times, **kwargs)
+            integrated_state = odeint(integration_func, state0, times, **odeint_kwargs)
         else:
             with torch.no_grad():
-                integrated_state = odeint(integration_func, state0, times, **kwargs)
+                integrated_state = odeint(integration_func, state0, times, **odeint_kwargs)
         all_xs = integrated_state[:, :batch_size]
         all_logprobs = integrated_state[:, batch_size:, 0, 0]
 

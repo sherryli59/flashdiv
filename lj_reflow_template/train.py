@@ -165,6 +165,7 @@ def train_model():
         enable_progress_bar = True,
         val_check_interval=50,
         log_every_n_steps=1,
+        num_sanity_val_steps=0,
     )
     if args.ckpt_dir is not None:
         print(f"Resuming from checkpoint: {args.ckpt_dir}")

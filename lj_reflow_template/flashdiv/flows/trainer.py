@@ -306,9 +306,7 @@ class FlowTrainerTorus(LightningModule):
             ess = 1.0 / (w.pow(2).sum())
             ess_norm = ess / w.shape[0]
             weight_var = w.var(unbiased=False)
-            ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('train_ess', ess_norm, on_step=True, on_epoch=True)
-            self.log('train_ess_time', ess_time, on_step=True, on_epoch=True)
             if self.weight_var_weight > 0:
                 self.log('train_weight_var', weight_var, on_step=True, on_epoch=True)
 
