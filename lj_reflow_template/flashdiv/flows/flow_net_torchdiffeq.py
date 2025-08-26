@@ -170,7 +170,9 @@ class FlowNet(nn.Module):
 
         # divergence method selection
         div_kwargs = {}
-        if 'div_method' in kwargs:
+        if hasattr(self, 'divergence'):
+            self._divergence = self.divergence
+        elif 'div_method' in kwargs:
             if kwargs['div_method'] == 'hutch':
                 self._divergence = self.divergence_hutch
                 if 'div_samples' in kwargs:
@@ -182,8 +184,6 @@ class FlowNet(nn.Module):
             else:
                 raise ValueError(f"Unknown divergence method: {kwargs['div_method']}")
             del kwargs['div_method']
-        elif hasattr(self, 'divergence'):
-            self._divergence = self.divergence
         else:
             print("No divergence method specified, using hutchison trace estimator by default")
             self._divergence = self.divergence_hutch
