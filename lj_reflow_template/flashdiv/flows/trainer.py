@@ -10,7 +10,7 @@ class FlowTrainer(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3, permute=False, sigma = 0,
                  cfm_weight: float = 1.0, ml_weight: float = 0.0,
                  div_method: str = 'full_jacobian', div_samples: int = 1,
-                 target_distribution=None, ess_var_weight: float = 0.0):
+                 target_distribution=None, weight_var_weight: float = 0.0):
         super().__init__()
         self.flow_model = flow_model
         self.learning_rate = learning_rate
@@ -21,7 +21,7 @@ class FlowTrainer(LightningModule):
         self.div_method = div_method
         self.div_samples = div_samples
         self.target_distribution = target_distribution
-        self.ess_var_weight = ess_var_weight
+        self.weight_var_weight = weight_var_weight
         self.save_hyperparameters(ignore=["target_distribution"])
 
     def permute_batch(self, batch):
@@ -67,8 +67,8 @@ class FlowTrainer(LightningModule):
         cfm_loss = nn.MSELoss()(v, vt)
 
         ml_loss = torch.tensor(0.0, device=base.device)
-        ess_var_loss = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.ess_var_weight > 0:
+        weight_var = torch.tensor(0.0, device=base.device)
+        if self.ml_weight > 0 or self.weight_var_weight > 0:
             start = time.time()
             _, logp = self.flow_model.log_prob(target, div_method=self.div_method,
                                               div_samples=self.div_samples, boxlength=None)
@@ -87,18 +87,18 @@ class FlowTrainer(LightningModule):
             w = w / w.sum()
             ess = 1.0 / (w.pow(2).sum())
             ess_norm = ess / w.shape[0]
-            ess_var_loss = w.var(unbiased=False)
+            weight_var = w.var(unbiased=False)
             ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('train_ess', ess_norm, on_step=True, on_epoch=True)
             self.log('train_ess_time', ess_time, on_step=True, on_epoch=True)
-            if self.ess_var_weight > 0:
-                self.log('train_ess_var', ess_var_loss, on_step=True, on_epoch=True)
+            if self.weight_var_weight > 0:
+                self.log('train_weight_var', weight_var, on_step=True, on_epoch=True)
 
         v_squared_norm = (v**2).mean()
         total_loss = (
             self.cfm_weight * cfm_loss
             + self.ml_weight * ml_loss
-            + self.ess_var_weight * ess_var_loss
+            + self.weight_var_weight * weight_var
         )
         self.log("train_loss", total_loss / v_squared_norm, on_step=True, on_epoch=True)
         if self.ml_weight > 0:
@@ -130,8 +130,8 @@ class FlowTrainer(LightningModule):
         cfm_loss = nn.MSELoss()(v, vt)
 
         ml_loss = torch.tensor(0.0, device=base.device)
-        ess_var_loss = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.ess_var_weight > 0:
+        weight_var = torch.tensor(0.0, device=base.device)
+        if self.ml_weight > 0 or self.weight_var_weight > 0:
             start = time.time()
             _, logp = self.flow_model.log_prob(target, div_method=self.div_method,
                                               div_samples=self.div_samples, boxlength=None)
@@ -148,18 +148,18 @@ class FlowTrainer(LightningModule):
                 w = w / w.sum()
                 ess = 1.0 / (w.pow(2).sum())
                 ess_norm = ess / w.shape[0]
-                ess_var_loss = w.var(unbiased=False)
+                weight_var = w.var(unbiased=False)
                 ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('val_ess', ess_norm, on_step=False, on_epoch=True)
             self.log('val_ess_time', ess_time, on_step=False, on_epoch=True)
-            if self.ess_var_weight > 0:
-                self.log('val_ess_var', ess_var_loss, on_step=False, on_epoch=True)
+            if self.weight_var_weight > 0:
+                self.log('val_weight_var', weight_var, on_step=False, on_epoch=True)
 
         v_squared_norm = (v**2).mean()
         total_loss = (
             self.cfm_weight * cfm_loss
             + self.ml_weight * ml_loss
-            + self.ess_var_weight * ess_var_loss
+            + self.weight_var_weight * weight_var
         )
         self.log("val_loss", total_loss / v_squared_norm, on_step=False, on_epoch=True)
         if self.ml_weight > 0:
@@ -175,7 +175,7 @@ class FlowTrainerTorus(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3, permute=False, sigma = 0, boxlength=None,
                  cfm_weight: float = 1.0, ml_weight: float = 0.0,
                  div_method: str = 'full_jacobian', div_samples: int = 1,
-                 target_distribution=None, ess_var_weight: float = 0.0):
+                 target_distribution=None, weight_var_weight: float = 0.0):
         super().__init__()
         self.flow_model = flow_model
         self.learning_rate = learning_rate
@@ -187,7 +187,7 @@ class FlowTrainerTorus(LightningModule):
         self.div_method = div_method
         self.div_samples = div_samples
         self.target_distribution = target_distribution
-        self.ess_var_weight = ess_var_weight
+        self.weight_var_weight = weight_var_weight
         self.save_hyperparameters(ignore=["target_distribution"])
 
     def permute_batch(self, batch):
@@ -245,8 +245,8 @@ class FlowTrainerTorus(LightningModule):
         cfm_loss = (weight * per_sample_loss).sum() / weight.sum()
 
         ml_loss = torch.tensor(0.0, device=base.device)
-        ess_var_loss = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.ess_var_weight > 0:
+        weight_var = torch.tensor(0.0, device=base.device)
+        if self.ml_weight > 0 or self.weight_var_weight > 0:
             start = time.time()
             _, logp = self.flow_model.log_prob(target, boxlength=self.boxlength,
                                               div_method=self.div_method,
@@ -264,18 +264,18 @@ class FlowTrainerTorus(LightningModule):
             w = w / w.sum()
             ess = 1.0 / (w.pow(2).sum())
             ess_norm = ess / w.shape[0]
-            ess_var_loss = w.var(unbiased=False)
+            weight_var = w.var(unbiased=False)
             ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('train_ess', ess_norm, on_step=True, on_epoch=True)
             self.log('train_ess_time', ess_time, on_step=True, on_epoch=True)
-            if self.ess_var_weight > 0:
-                self.log('train_ess_var', ess_var_loss, on_step=True, on_epoch=True)
+            if self.weight_var_weight > 0:
+                self.log('train_weight_var', weight_var, on_step=True, on_epoch=True)
 
         v_squared_norm = (vtorus ** 2).mean()
         total_loss = (
             self.cfm_weight * cfm_loss
             + self.ml_weight * ml_loss
-            + self.ess_var_weight * ess_var_loss
+            + self.weight_var_weight * weight_var
         )
         self.log("train_loss", total_loss / v_squared_norm, on_step=True, on_epoch=True)
         if self.ml_weight > 0:
@@ -339,8 +339,8 @@ class FlowTrainerTorus(LightningModule):
         cfm_loss = (weight * per_sample_loss).sum()/ weight.sum()
 
         ml_loss = torch.tensor(0.0, device=base.device)
-        ess_var_loss = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.ess_var_weight > 0:
+        weight_var = torch.tensor(0.0, device=base.device)
+        if self.ml_weight > 0 or self.weight_var_weight > 0:
             start = time.time()
             _, logp = self.flow_model.log_prob(target, boxlength=self.boxlength,
                                               div_method=self.div_method,
@@ -358,18 +358,18 @@ class FlowTrainerTorus(LightningModule):
                 w = w / w.sum()
                 ess = 1.0 / (w.pow(2).sum())
                 ess_norm = ess / w.shape[0]
-                ess_var_loss = w.var(unbiased=False)
+                weight_var = w.var(unbiased=False)
                 ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('val_ess', ess_norm, on_step=False, on_epoch=True)
             self.log('val_ess_time', ess_time, on_step=False, on_epoch=True)
-            if self.ess_var_weight > 0:
-                self.log('val_ess_var', ess_var_loss, on_step=False, on_epoch=True)
+            if self.weight_var_weight > 0:
+                self.log('val_weight_var', weight_var, on_step=False, on_epoch=True)
 
         v_squared_norm = (vtorus ** 2).mean()
         total_loss = (
             self.cfm_weight * cfm_loss
             + self.ml_weight * ml_loss
-            + self.ess_var_weight * ess_var_loss
+            + self.weight_var_weight * weight_var
         )
         self.log("val_loss", total_loss / v_squared_norm, on_step=False, on_epoch=True)
         if self.ml_weight > 0:

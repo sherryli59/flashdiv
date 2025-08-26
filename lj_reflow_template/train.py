@@ -145,7 +145,7 @@ def train_model():
         div_method=args.div_method,
         div_samples=args.div_samples,
         target_distribution=ljsystem,
-        ess_var_weight=args.ess_var_weight,
+        weight_var_weight=args.weight_var_weight,
     )
 
     ckpt_cb = ModelCheckpoint(
@@ -180,7 +180,7 @@ def train_model():
             div_method=args.div_method,
             div_samples=args.div_samples,
             target_distribution=ljsystem,
-            ess_var_weight=args.ess_var_weight,
+            weight_var_weight=args.weight_var_weight,
         )
 
     trainer.fit(velocitytrainer, train_loader, val_loader)
@@ -232,8 +232,8 @@ parser.add_argument('--div_method', type=str, default='direct_trace',
                     help='Divergence computation method for log-likelihood')
 parser.add_argument('--div_samples', type=int, default=1,
                     help='Samples for Hutchinson trace estimator if used')
-parser.add_argument('--ess_var_weight', type=float, default=0.0,
-                    help='Weight for variance of ESS loss term')
+parser.add_argument('--weight_var_weight', type=float, default=0.0,
+                    help='Weight for variance of normalized importance weights loss term')
 
 
 args = parser.parse_args()
