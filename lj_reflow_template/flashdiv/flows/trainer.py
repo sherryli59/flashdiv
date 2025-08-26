@@ -6,6 +6,26 @@ from einops import repeat, rearrange, reduce
 import torch.nn.functional as F
 import time
 
+
+class PathGrad(torch.autograd.Function):
+    """Custom autograd shim to route gradients through ``x`` only.
+
+    The forward pass returns ``l`` unchanged, while the backward pass supplies
+    the gradient of ``l`` with respect to ``x`` and blocks gradients flowing
+    directly to ``l``.
+    """
+
+    @staticmethod
+    def forward(ctx, l, x):
+        ctx.save_for_backward(l, x)
+        return l
+
+    @staticmethod
+    def backward(ctx, g):
+        l, x = ctx.saved_tensors
+        grad_x = torch.autograd.grad(l, x, g, retain_graph=True)[0]
+        return None, grad_x
+
 class FlowTrainer(LightningModule):
     def __init__(self, flow_model, learning_rate=1e-3, permute=False, sigma = 0,
                  cfm_weight: float = 1.0, ml_weight: float = 0.0,
@@ -69,9 +89,18 @@ class FlowTrainer(LightningModule):
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
         if self.ml_weight > 0:
-            _, logp = self.flow_model.log_prob(target, div_method=self.div_method,
-                                              div_samples=self.div_samples, boxlength=None)
-            ml_loss = -logp.mean()
+            x_traj, logp_traj = self.flow_model.sample_logprob(
+                target,
+                None,
+                div_method=self.div_method,
+                div_samples=self.div_samples,
+                boxlength=None,
+                reverse=True,
+                differentiable=True,
+            )
+            ell = logp_traj[-1]
+            base_logp = torch.zeros_like(ell)
+            ml_loss = -(base_logp.detach() + PathGrad.apply(ell, x_traj[-1])).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()
@@ -147,9 +176,18 @@ class FlowTrainer(LightningModule):
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
         if self.ml_weight > 0:
-            _, logp = self.flow_model.log_prob(target, div_method=self.div_method,
-                                              div_samples=self.div_samples, boxlength=None)
-            ml_loss = -logp.mean()
+            x_traj, logp_traj = self.flow_model.sample_logprob(
+                target,
+                None,
+                div_method=self.div_method,
+                div_samples=self.div_samples,
+                boxlength=None,
+                reverse=True,
+                differentiable=False,
+            )
+            ell = logp_traj[-1]
+            base_logp = torch.zeros_like(ell)
+            ml_loss = -(base_logp + ell).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()
@@ -271,10 +309,18 @@ class FlowTrainerTorus(LightningModule):
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
         if self.ml_weight > 0:
-            _, logp = self.flow_model.log_prob(target, boxlength=self.boxlength,
-                                              div_method=self.div_method,
-                                              div_samples=self.div_samples)
-            ml_loss = -logp.mean()
+            x_traj, logp_traj = self.flow_model.sample_logprob(
+                target,
+                None,
+                boxlength=self.boxlength,
+                div_method=self.div_method,
+                div_samples=self.div_samples,
+                reverse=True,
+                differentiable=True,
+            )
+            ell = logp_traj[-1]
+            base_logp = torch.zeros_like(ell)
+            ml_loss = -(base_logp.detach() + PathGrad.apply(ell, x_traj[-1])).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()
@@ -380,10 +426,18 @@ class FlowTrainerTorus(LightningModule):
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
         if self.ml_weight > 0:
-            _, logp = self.flow_model.log_prob(target, boxlength=self.boxlength,
-                                              div_method=self.div_method,
-                                              div_samples=self.div_samples)
-            ml_loss = -logp.mean()
+            x_traj, logp_traj = self.flow_model.sample_logprob(
+                target,
+                None,
+                boxlength=self.boxlength,
+                div_method=self.div_method,
+                div_samples=self.div_samples,
+                reverse=True,
+                differentiable=False,
+            )
+            ell = logp_traj[-1]
+            base_logp = torch.zeros_like(ell)
+            ml_loss = -(base_logp + ell).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()
