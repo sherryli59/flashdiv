@@ -251,7 +251,7 @@ class FlowNet(nn.Module):
             setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
 
         if differentiable:
-            integrated_state = odeint(integration_func, state0, times, **odeint_kwargs)
+            integrated_state = odeint_adjoint(integration_func, state0, times, **odeint_kwargs)
         else:
             with torch.no_grad():
                 integrated_state = odeint(integration_func, state0, times, **odeint_kwargs)
