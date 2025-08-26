@@ -213,11 +213,12 @@ class FlowNet(nn.Module):
         if not differentiable:
             state0 = state0.detach()
 
-        class IntegrationFunc:
+        class IntegrationFunc(nn.Module):
             def __init__(self, model):
+                super().__init__()
                 self.model = model
 
-            def __call__(self, t, state):
+            def forward(self, t, state):
                 xs = state[:batch_size]
                 t_ = torch.full((batch_size,), t.item(), device=xs.device)
                 div = self.model._divergence(xs, t_, **div_kwargs)
@@ -225,7 +226,6 @@ class FlowNet(nn.Module):
                 if not differentiable:
                     div = div.detach()
                     v = v.detach()
-                # flip sign for reverse integration
                 vel = -v if reverse else v
                 dlogp = div if reverse else -div
 
