@@ -68,20 +68,35 @@ class FlowTrainer(LightningModule):
 
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.weight_var_weight > 0:
-            start = time.time()
+        if self.ml_weight > 0:
             _, logp = self.flow_model.log_prob(target, div_method=self.div_method,
                                               div_samples=self.div_samples, boxlength=None)
-            if self.ml_weight > 0:
-                ml_loss = -logp.mean()
+            ml_loss = -logp.mean()
 
-            if self.target_distribution is not None:
-                with torch.no_grad():
-                    log_target = -self.target_distribution.potential(target) / self.target_distribution.kT
-                log_w = log_target - logp
+        if self.target_distribution is not None or self.weight_var_weight > 0:
+            start = time.time()
+            logprob0 = torch.zeros(base.shape[0], device=base.device)
+            if self.weight_var_weight > 0:
+                xs_traj, logq_traj = self.flow_model.sample_logprob(
+                    base, logprob0, div_method=self.div_method,
+                    div_samples=self.div_samples, boxlength=None,
+                    differentiable=True,
+                )
             else:
-                log_w = logp
-
+                with torch.no_grad():
+                    xs_traj, logq_traj = self.flow_model.sample_logprob(
+                        base, logprob0, div_method=self.div_method,
+                        div_samples=self.div_samples, boxlength=None,
+                        differentiable=False,
+                    )
+            xs = xs_traj[-1]
+            log_q = logq_traj[-1]
+            with torch.no_grad():
+                if self.target_distribution is not None:
+                    log_target = -self.target_distribution.potential(xs) / self.target_distribution.kT
+                else:
+                    log_target = torch.zeros_like(log_q)
+            log_w = log_target - log_q
             log_w = log_w - log_w.max()
             w = torch.exp(log_w)
             w = w / w.sum()
@@ -131,18 +146,27 @@ class FlowTrainer(LightningModule):
 
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.weight_var_weight > 0:
-            start = time.time()
+        if self.ml_weight > 0:
             _, logp = self.flow_model.log_prob(target, div_method=self.div_method,
                                               div_samples=self.div_samples, boxlength=None)
-            if self.ml_weight > 0:
-                ml_loss = -logp.mean()
+            ml_loss = -logp.mean()
+
+        if self.target_distribution is not None or self.weight_var_weight > 0:
+            start = time.time()
+            logprob0 = torch.zeros(base.shape[0], device=base.device)
             with torch.no_grad():
+                xs_traj, logq_traj = self.flow_model.sample_logprob(
+                    base, logprob0, div_method=self.div_method,
+                    div_samples=self.div_samples, boxlength=None,
+                    differentiable=False,
+                )
+                xs = xs_traj[-1]
+                log_q = logq_traj[-1]
                 if self.target_distribution is not None:
-                    log_target = -self.target_distribution.potential(target) / self.target_distribution.kT
-                    log_w = log_target - logp
+                    log_target = -self.target_distribution.potential(xs) / self.target_distribution.kT
                 else:
-                    log_w = logp
+                    log_target = torch.zeros_like(log_q)
+                log_w = log_target - log_q
                 log_w = log_w - log_w.max()
                 w = torch.exp(log_w)
                 w = w / w.sum()
@@ -246,19 +270,36 @@ class FlowTrainerTorus(LightningModule):
 
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.weight_var_weight > 0:
-            start = time.time()
+        if self.ml_weight > 0:
             _, logp = self.flow_model.log_prob(target, boxlength=self.boxlength,
                                               div_method=self.div_method,
                                               div_samples=self.div_samples)
-            if self.ml_weight > 0:
-                ml_loss = -logp.mean()
-            if self.target_distribution is not None:
-                with torch.no_grad():
-                    log_target = -self.target_distribution.potential(target) / self.target_distribution.kT
-                log_w = log_target - logp
+            ml_loss = -logp.mean()
+
+        if self.target_distribution is not None or self.weight_var_weight > 0:
+            start = time.time()
+            logprob0 = torch.zeros(base.shape[0], device=base.device)
+            if self.weight_var_weight > 0:
+                xs_traj, logq_traj = self.flow_model.sample_logprob(
+                    base, logprob0, boxlength=self.boxlength,
+                    div_method=self.div_method, div_samples=self.div_samples,
+                    differentiable=True,
+                )
             else:
-                log_w = logp
+                with torch.no_grad():
+                    xs_traj, logq_traj = self.flow_model.sample_logprob(
+                        base, logprob0, boxlength=self.boxlength,
+                        div_method=self.div_method, div_samples=self.div_samples,
+                        differentiable=False,
+                    )
+            xs = xs_traj[-1]
+            log_q = logq_traj[-1]
+            with torch.no_grad():
+                if self.target_distribution is not None:
+                    log_target = -self.target_distribution.potential(xs) / self.target_distribution.kT
+                else:
+                    log_target = torch.zeros_like(log_q)
+            log_w = log_target - log_q
             log_w = log_w - log_w.max()
             w = torch.exp(log_w)
             w = w / w.sum()
@@ -340,19 +381,28 @@ class FlowTrainerTorus(LightningModule):
 
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
-        if self.ml_weight > 0 or self.weight_var_weight > 0:
-            start = time.time()
+        if self.ml_weight > 0:
             _, logp = self.flow_model.log_prob(target, boxlength=self.boxlength,
                                               div_method=self.div_method,
                                               div_samples=self.div_samples)
-            if self.ml_weight > 0:
-                ml_loss = -logp.mean()
+            ml_loss = -logp.mean()
+
+        if self.target_distribution is not None or self.weight_var_weight > 0:
+            start = time.time()
+            logprob0 = torch.zeros(base.shape[0], device=base.device)
             with torch.no_grad():
+                xs_traj, logq_traj = self.flow_model.sample_logprob(
+                    base, logprob0, boxlength=self.boxlength,
+                    div_method=self.div_method, div_samples=self.div_samples,
+                    differentiable=False,
+                )
+                xs = xs_traj[-1]
+                log_q = logq_traj[-1]
                 if self.target_distribution is not None:
-                    log_target = -self.target_distribution.potential(target) / self.target_distribution.kT
-                    log_w = log_target - logp
+                    log_target = -self.target_distribution.potential(xs) / self.target_distribution.kT
                 else:
-                    log_w = logp
+                    log_target = torch.zeros_like(log_q)
+                log_w = log_target - log_q
                 log_w = log_w - log_w.max()
                 w = torch.exp(log_w)
                 w = w / w.sum()

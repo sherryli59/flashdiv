@@ -121,18 +121,31 @@ class FlowNet(nn.Module):
 
 
   
-    # @torch.no_grad()
-    def sample_logprob(self, x, logprob=None, times=None, reverse=False, verbose=False, **kwargs):
-        """
-        ODE integration returning the trajectory and logprob.
+    def sample_logprob(self, x, logprob=None, times=None, reverse=False,
+                       verbose=False, differentiable: bool = False, **kwargs):
+        """Integrate the flow and track log-probability.
 
-        Args:
-            x: initial position (x0 if forward, x1 if reverse)
-            logprob: initial log probability (if reverse=False)
-            times: time vector (optional)
-            reverse: if True, integrate from t=1 to t=0
-            verbose: print diagnostic info
-            kwargs: passed to odeint and divergence
+        Parameters
+        ----------
+        x : torch.Tensor
+            Initial state.  ``x0`` if ``reverse=False`` else ``x1``.
+        logprob : torch.Tensor, optional
+            Initial log-density. Must be provided when ``reverse=False``.
+        times : torch.Tensor, optional
+            Explicit time grid for integration.
+        reverse : bool, optional
+            If ``True`` integrate from ``t=1`` to ``t=0``.
+        verbose : bool, optional
+            Print diagnostic information.
+        differentiable : bool, optional
+            When ``True`` no ``detach`` or ``torch.no_grad`` is used so
+            gradients w.r.t. the model parameters can flow through the
+            integration.  The default ``False`` reproduces the previous
+            behaviour and performs the integration without tracking
+            gradients.
+        **kwargs : dict
+            Additional arguments forwarded to ``torchdiffeq.odeint`` and the
+            divergence computation.
         """
         batch_size = x.shape[0]
         npart = x.shape[-2]
@@ -193,6 +206,8 @@ class FlowNet(nn.Module):
             ),
             dim=0
         )
+        if not differentiable:
+            state0 = state0.detach()
 
         class IntegrationFunc:
             def __init__(self, model):
@@ -201,13 +216,16 @@ class FlowNet(nn.Module):
             def __call__(self, t, state):
                 xs = state[:batch_size]
                 t_ = torch.full((batch_size,), t.item(), device=xs.device)
-                div = self.model._divergence(xs, t_, **div_kwargs).detach()
-                v = self.model.forward(xs, t_).detach()
+                div = self.model._divergence(xs, t_, **div_kwargs)
+                v = self.model.forward(xs, t_)
+                if not differentiable:
+                    div = div.detach()
+                    v = v.detach()
                 # flip sign for reverse integration
                 vel = -v if reverse else v
                 dlogp = div if reverse else -div
 
-                return torch.cat(
+                out = torch.cat(
                     (
                         vel,
                         repeat(
@@ -217,7 +235,8 @@ class FlowNet(nn.Module):
                         )
                     ),
                     dim=0
-                ).detach()
+                )
+                return out.detach() if not differentiable else out
 
         integration_func = IntegrationFunc(self)
 
@@ -227,7 +246,11 @@ class FlowNet(nn.Module):
                 xs[:batch_size]  = (xs[:batch_size] + 0.5 * boxlength) % boxlength - 0.5 * boxlength
             setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
 
-        integrated_state = odeint(integration_func, state0, times, **kwargs)
+        if differentiable:
+            integrated_state = odeint(integration_func, state0, times, **kwargs)
+        else:
+            with torch.no_grad():
+                integrated_state = odeint(integration_func, state0, times, **kwargs)
         all_xs = integrated_state[:, :batch_size]
         all_logprobs = integrated_state[:, batch_size:, 0, 0]
 
