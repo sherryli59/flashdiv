@@ -1,3 +1,4 @@
 flashdiv.egg-info
 flashdiv/*/__pycache__
 flashdiv/*/__pycache__/*
+**/__pycache__/
