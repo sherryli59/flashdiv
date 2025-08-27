@@ -23,15 +23,7 @@ class PathGrad(torch.autograd.Function):
     @staticmethod
     def backward(ctx, g):
         l, x = ctx.saved_tensors
-        grad_x = torch.autograd.grad(
-            l,
-            x,
-            g,
-            retain_graph=True,
-            allow_unused=True,
-        )[0]
-        if grad_x is None:
-            grad_x = torch.zeros_like(x)
+        grad_x = torch.autograd.grad(l, x, g, retain_graph=True)[0]
         return None, grad_x
 
 class FlowTrainer(LightningModule):
@@ -326,9 +318,12 @@ class FlowTrainerTorus(LightningModule):
                 reverse=True,
                 differentiable=True,
             )
-            ell = logp_traj[-1]
-            base_logp = torch.zeros_like(ell)
-            ml_loss = -(base_logp.detach() + PathGrad.apply(ell, x_traj[-1])).mean()
+            logdet = logp_traj[-1]
+            log_target = torch.zeros_like(logdet)
+            if self.target_distribution is not None:
+                with torch.no_grad():
+                    log_target = -self.target_distribution.potential(x_traj[-1]) / self.target_distribution.kT
+            ml_loss = (log_target-PathGrad.apply(logdet, x_traj[-1])).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()

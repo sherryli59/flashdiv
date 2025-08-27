@@ -209,7 +209,7 @@ def get_frame_count(path):
     
 
 parser = argparse.ArgumentParser(description="Simple argument parser example")
-parser.add_argument('--learning_rate', type=float, default=0.0005, help='Learning rate')
+parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate')
 parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
 parser.add_argument('--nb_epochs', type=int, default=30, help='Number of epochs')
 parser.add_argument('--init', type=str, default='uniform', help='Initialization method: normal, uniform')

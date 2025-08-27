@@ -307,10 +307,10 @@ class FlowNet(nn.Module):
         if 'method' not in kwargs:
             kwargs['method'] = 'rk4'
         if 'options' not in kwargs:
-            kwargs['options'] = {'step_size': 1 / 40}
+            kwargs['options'] = {'step_size': 1 / 20}
         odeint_kwargs = {}
         odeint_kwargs['method'] = kwargs.pop('method', 'rk4')
-        odeint_kwargs['options'] = kwargs.pop('options', {'step_size': 1 / 40})
+        odeint_kwargs['options'] = kwargs.pop('options', {'step_size': 1 / 20})
         
 
         # ------------------------------------------------------------------

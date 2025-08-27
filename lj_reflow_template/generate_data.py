@@ -150,7 +150,8 @@ def generate_samples(model, ljsystem, batch_size, n_iterations, init='uniform', 
                     method='rk4',
                     div_method="direct_trace",
                     boxlength=ljsystem.boxlength if ljsystem.boxlength > 0 else None,
-                    options={'step_size': 1 / 100},
+                    options={'step_size': 1 / 40},
+                    differentiate=False,
                 )
             else:
                 xt_= model.sample(
