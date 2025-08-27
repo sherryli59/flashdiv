@@ -70,21 +70,26 @@ class FlowTrainer(LightningModule):
         return self.flow_model(x, t)
 
     def training_step(self, batch, batch_idx):
-        base, target = batch
+        if len(batch) == 3:
+            base, target, weight = batch
+        else:
+            base, target = batch
+            weight = torch.ones(base.shape[0], device=base.device)
 
         if self.permute:
             # permute the batch to avoid symmetry issues
-            #base = self.permute_batch(base)
             target = self.permute_batch(target)
 
-        t = torch.rand(base.shape[0], device=base.device)  # shape: [batch]
-        # Broadcast t to shape [batch, N, D] for interpolation
-        tr = t.view(-1, 1, 1)  # shape: [batch, 1, 1]
-        xt = base * (1 - tr) + target * tr + self.sigma * torch.randn_like(base)  # [batch, N, D]
-        # xt.requires_grad_()
+        t = torch.rand(base.shape[0], device=base.device)
         v = target - base
+        tr = t.view(-1, 1, 1)
+        xt = base + tr * v + self.sigma * torch.randn_like(base)
+
         vt = self.flow_model(xt, t)
-        cfm_loss = nn.MSELoss()(v, vt)
+
+        per_sample_loss = F.mse_loss(vt, v, reduction='none').mean(dim=[1, 2])
+        weight = weight.to(per_sample_loss.device)
+        cfm_loss = (weight * per_sample_loss).sum() / weight.sum()
 
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
@@ -132,9 +137,7 @@ class FlowTrainer(LightningModule):
             ess = 1.0 / (w.pow(2).sum())
             ess_norm = ess / w.shape[0]
             weight_var = w.var(unbiased=False)
-            ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('train_ess', ess_norm, on_step=True, on_epoch=True)
-            self.log('train_ess_time', ess_time, on_step=True, on_epoch=True)
             if self.weight_var_weight > 0:
                 self.log('train_weight_var', weight_var, on_step=True, on_epoch=True)
 
@@ -159,19 +162,25 @@ class FlowTrainer(LightningModule):
     #         print("[Gradient check] No gradient on xs!")
 
     def validation_step(self, batch, batch_idx):
-        base, target = batch
+        if len(batch) == 3:
+            base, target, weight = batch
+        else:
+            base, target = batch
+            weight = torch.ones(base.shape[0], device=base.device)
 
         if self.permute:
-            # permute the batch to avoid symmetry issues
-            #base = self.permute_batch(base)
             target = self.permute_batch(target)
 
         t = torch.rand(base.shape[0], device=base.device)
-        tr = t.view(-1, 1, 1)  # shape: [batch, 1, 1]
-        xt = base * (1 - tr) + target * tr + self.sigma * torch.randn_like(base)  # [batch, N, D]
         v = target - base
+        tr = t.view(-1, 1, 1)
+        xt = base + tr * v + self.sigma * torch.randn_like(base)
+
         vt = self.flow_model(xt, t)
-        cfm_loss = nn.MSELoss()(v, vt)
+
+        per_sample_loss = F.mse_loss(vt, v, reduction='none').mean(dim=[1, 2])
+        weight = weight.to(per_sample_loss.device)
+        cfm_loss = (weight * per_sample_loss).sum() / weight.sum()
 
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
@@ -211,9 +220,7 @@ class FlowTrainer(LightningModule):
                 ess = 1.0 / (w.pow(2).sum())
                 ess_norm = ess / w.shape[0]
                 weight_var = w.var(unbiased=False)
-                ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('val_ess', ess_norm, on_step=False, on_epoch=True)
-            self.log('val_ess_time', ess_time, on_step=False, on_epoch=True)
             if self.weight_var_weight > 0:
                 self.log('val_weight_var', weight_var, on_step=False, on_epoch=True)
 
@@ -464,9 +471,7 @@ class FlowTrainerTorus(LightningModule):
                 ess = 1.0 / (w.pow(2).sum())
                 ess_norm = ess / w.shape[0]
                 weight_var = w.var(unbiased=False)
-                ess_time = ess_norm / (time.time() - start + 1e-8)
             self.log('val_ess', ess_norm, on_step=False, on_epoch=True)
-            self.log('val_ess_time', ess_time, on_step=False, on_epoch=True)
             if self.weight_var_weight > 0:
                 self.log('val_weight_var', weight_var, on_step=False, on_epoch=True)
 
