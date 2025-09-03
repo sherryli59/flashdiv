@@ -390,3 +390,131 @@ class FlowNet(nn.Module):
         x0 = integrated_state[-1, :batch_size]
         logp = integrated_state[-1, batch_size:, 0, 0]
         return x0, logp
+
+    def integrate_augmented_adj(self, x1, adjoint1, times=None, verbose=False, **kwargs):
+        """Integrate backward with an augmented adjoint state.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor
+            Terminal state at ``t=1``.
+        adjoint1 : torch.Tensor
+            Initial adjoint ``\nabla_{x_1} \log p_{\text{target}}(x_1)``.
+        times : torch.Tensor, optional
+            Optional time grid.  Defaults to ``[1, 0]``.
+        verbose : bool, optional
+            Print diagnostic information.
+        **kwargs : dict
+            Additional arguments forwarded to divergence computation and
+            ``torchdiffeq.odeint_adjoint``.
+
+        Returns
+        -------
+        x0 : torch.Tensor
+            Latent state at ``t=0``.
+        model_score : torch.Tensor
+            Model score ``\nabla_{x_0} \log p_{0,\theta}(x_0)``.
+        logdet : torch.Tensor
+            Log absolute determinant of the Jacobian of the backward flow.
+        """
+
+        batch_size, npart, dim = x1.shape
+        boxlength = kwargs.pop('boxlength', None)
+
+        if times is None:
+            times = torch.linspace(0, 1, 2, device=x1.device)
+        times = torch.flip(times, dims=[0])
+
+        if 'method' not in kwargs:
+            kwargs['method'] = 'rk4'
+        if 'options' not in kwargs:
+            kwargs['options'] = {'step_size': 1 / 20}
+
+        odeint_kwargs = {}
+        odeint_kwargs['method'] = kwargs.pop('method', 'rk4')
+        odeint_kwargs['options'] = kwargs.pop('options', {'step_size': 1 / 20})
+
+        # divergence selection
+        div_kwargs = {}
+        if hasattr(self, 'divergence'):
+            self._divergence = self.divergence
+        elif 'div_method' in kwargs:
+            if kwargs['div_method'] == 'hutch':
+                self._divergence = self.divergence_hutch
+                if 'div_samples' in kwargs:
+                    div_kwargs['div_samples'] = kwargs.pop('div_samples')
+            elif kwargs['div_method'] == 'full_jacobian':
+                self._divergence = self.divergence_full_jacobian
+            elif kwargs['div_method'] == 'direct_trace':
+                self._divergence = self.direct_trace
+            else:
+                raise ValueError(f"Unknown divergence method: {kwargs['div_method']}")
+            del kwargs['div_method']
+        else:
+            self._divergence = self.divergence_full_jacobian
+
+        if verbose:
+            print("Using divergence method:", self._divergence.__name__)
+
+        logdet0 = torch.zeros(batch_size, device=x1.device)
+        state0 = torch.cat(
+            (
+                x1,
+                repeat(
+                    logdet0,
+                    'b -> b p d',
+                    p=npart,
+                    d=dim,
+                ),
+                adjoint1,
+            ),
+            dim=0,
+        )
+
+        class IntegrationFunc(nn.Module):
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+
+            def forward(self, t, state):
+                with torch.enable_grad():
+                    xs = state[:batch_size].detach().requires_grad_(True)
+                    logdet = state[batch_size:2 * batch_size]
+                    adj = state[2 * batch_size:]
+                    t_ = torch.full((batch_size,), t.item(), device=xs.device)
+                    v = self.model.forward(xs, t_)
+                    div = self.model._divergence(xs, t_, **div_kwargs)
+                    jvp = torch.autograd.grad(v, xs, adj, create_graph=True, allow_unused=True)[0]
+                    if jvp is None:
+                        jvp = torch.zeros_like(xs)
+
+                vel = -v
+                dlogdet = div
+                d_adj = -jvp
+
+                return torch.cat(
+                    (
+                        vel,
+                        repeat(
+                            dlogdet,
+                            'b -> b p d',
+                            p=npart,
+                            d=dim,
+                        ),
+                        d_adj,
+                    ),
+                    dim=0,
+                )
+
+        integration_func = IntegrationFunc(self)
+
+        if boxlength is not None:
+            def mod(xs):
+                xs[:batch_size] = (xs[:batch_size] + 0.5 * boxlength) % boxlength - 0.5 * boxlength
+            setattr(integration_func, 'callback_step', lambda t, xs, dt: mod(xs))
+
+        integrated_state = odeint_adjoint(integration_func, state0, times, **odeint_kwargs)
+        x0 = integrated_state[-1, :batch_size]
+        logdet = integrated_state[-1, batch_size:2 * batch_size, 0, 0]
+        model_score = integrated_state[-1, 2 * batch_size:]
+        return x0, model_score, logdet
