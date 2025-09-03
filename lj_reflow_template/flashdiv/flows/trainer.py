@@ -94,18 +94,23 @@ class FlowTrainer(LightningModule):
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
         if self.ml_weight > 0:
-            x_traj, logp_traj = self.flow_model.sample_logprob(
+            if self.target_distribution is None:
+                raise ValueError("target_distribution must be provided for ML training")
+            with torch.no_grad():
+                target_score = self.target_distribution.grad_log_prob(target)
+            x0, model_score, logdet = self.flow_model.integrate_augmented_adj(
                 target,
-                None,
+                target_score,
                 div_method=self.div_method,
                 div_samples=self.div_samples,
-                boxlength=None,
-                reverse=True,
-                differentiable=True,
             )
-            ell = logp_traj[-1]
-            base_logp = torch.zeros_like(ell)
-            ml_loss = -(base_logp.detach() + PathGrad.apply(ell, x_traj[-1])).mean()
+            prior_logp = -0.5 * (x0 ** 2).sum(dim=[1, 2])
+            prior_score = -x0
+            N = x0.shape[1] * x0.shape[2]
+            grad_x0 = (model_score - prior_score) / N
+            path_term = PathGrad.apply((x0 * grad_x0.detach()).sum(dim=[1, 2]), x0)
+            ell = prior_logp + logdet
+            ml_loss = -(ell.detach() + path_term).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()
@@ -185,18 +190,20 @@ class FlowTrainer(LightningModule):
         ml_loss = torch.tensor(0.0, device=base.device)
         weight_var = torch.tensor(0.0, device=base.device)
         if self.ml_weight > 0:
-            x_traj, logp_traj = self.flow_model.sample_logprob(
-                target,
-                None,
-                div_method=self.div_method,
-                div_samples=self.div_samples,
-                boxlength=None,
-                reverse=True,
-                differentiable=False,
-            )
-            ell = logp_traj[-1]
-            base_logp = torch.zeros_like(ell)
-            ml_loss = -(base_logp + ell).mean()
+            with torch.no_grad():
+                target_score = self.target_distribution.grad_log_prob(target)
+                x0, model_score, logdet = self.flow_model.integrate_augmented_adj(
+                    target,
+                    target_score,
+                    div_method=self.div_method,
+                    div_samples=self.div_samples,
+                )
+                prior_logp = -0.5 * (x0 ** 2).sum(dim=[1, 2])
+                prior_score = -x0
+                N = x0.shape[1] * x0.shape[2]
+                grad_x0 = (model_score - prior_score) / N
+                ell = prior_logp + logdet
+                ml_loss = -(ell + (x0 * grad_x0).sum(dim=[1, 2])).mean()
 
         if self.target_distribution is not None or self.weight_var_weight > 0:
             start = time.time()
